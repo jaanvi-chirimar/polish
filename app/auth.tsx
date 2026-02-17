@@ -80,12 +80,10 @@ export default function AuthScreen() {
       if (Platform.OS !== 'web') {
         Alert.alert(
           'Phone Auth Error',
-          `Error: ${errorMessage}\n\n` +
-          'Make sure:\n' +
-          '1. Test phone number in Firebase matches EXACTLY (including +1)\n' +
-          '2. Format: +1 650-555-1234 (with country code)\n' +
-          '3. Phone auth is enabled in Firebase Console\n\n' +
-          'Check console for full error details.'
+          `${errorMessage}\n\n` +
+          '• Phone auth must be enabled in Firebase Console.\n' +
+          '• For real numbers: upgrade project to Blaze (Billing) so Firebase can send SMS.\n' +
+          '• For testing: add this number as a test phone in Authentication → Phone (exact format e.g. +1 650 555 1234).'
         );
       } else {
         Alert.alert('Error', errorMessage);

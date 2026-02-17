@@ -1,54 +1,81 @@
-# Welcome to your Expo app 👋
+# Polish
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+A dual-role nail service marketplace app connecting customers with nail technicians. Built with React Native, Expo, and Firebase.
 
-## Get started
+## Features
 
-1. Install dependencies
+- **Phone authentication** — Sign up and log in with your phone number (SMS OTP)
+- **Dual roles** — Users can be a Customer, Nail Tech, or both
+- **Tech discovery** — Browse nail techs by location, tools, and designs
+- **Booking** — Schedule appointments with date/time picker and availability validation
+- **Messaging** — Real-time 1:1 chat between customers and techs
+- **Profile management** — Edit your profile, switch roles, manage availability
 
-   ```bash
-   npm install
-   ```
+## Tech Stack
 
-2. Start the app
+| Layer | Technology |
+|-------|-----------|
+| Framework | React Native + Expo |
+| Routing | Expo Router (file-based) |
+| Backend | Firebase (Auth + Firestore) |
+| Language | TypeScript |
 
-   ```bash
-   npx expo start
-   ```
+## Getting Started
 
-In the output, you'll find options to open the app in a
+### Prerequisites
 
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
+- Node.js
+- Expo CLI (`npm install -g expo-cli`)
+- iOS Simulator (Mac) or Android Emulator, or Expo Go on your phone
 
-You can start developing by editing the files inside the **app** directory.
-
-### iOS: "Invalid device or device pair" when opening simulator
-
-If you see `xcrun simctl boot ... exited with non-zero code: 148` / "Invalid device or device pair", Expo is trying to use a simulator that no longer exists (e.g. after an Xcode update). **Fix:** With the dev server running, press **Shift+i** (capital I) to open the simulator picker and choose a valid simulator. Or run `npm run ios:fresh` and then press **Shift+i** when the server starts. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
-
-## Get a fresh project
-
-When you're ready, run:
+### Install & Run
 
 ```bash
-npm run reset-project
+npm install
+npx expo start
 ```
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+Then open in your simulator or scan the QR code with Expo Go.
 
-## Learn more
+## Project Structure
 
-To learn more about developing your project with Expo, look at the following resources:
+```
+app/
+  _layout.tsx          Root layout — routes between auth, setup, and tabs
+  auth.tsx             Phone login flow (phone → OTP → role selection)
+  setup.tsx            First-time profile setup
+  profile.tsx          Profile editing screen
+  book/[id].tsx        Book an appointment with a tech
+  tech/[id].tsx        View a tech's profile
+  (tabs)/
+    _layout.tsx        Tab navigator (Home, Bookings, Inbox, Profile)
+    index.tsx          Home — discover techs (customers) / status (techs)
+    bookings.tsx       View and manage appointments
+    profile.tsx        Profile tab
+    inbox/
+      index.tsx        Conversation list
+      chat/[id].tsx    1:1 chat thread
 
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
+contexts/
+  AuthContext.tsx       Global auth state and user profile management
 
-## Join the community
+firebase/
+  config.ts            Firebase app initialization
 
-Join our community of developers creating universal apps.
+lib/
+  phoneAuth.ts         Phone verification helpers
+  threadId.ts          Chat thread ID generation
+  getUser.ts           Firestore user lookup
 
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+constants/
+  theme.ts             Design tokens (colors, spacing, typography)
+  nailTechOptions.ts   Predefined options for tools, designs, locations
+```
+
+## Data Model (Firestore)
+
+**users/{uid}** — Profile, roles, nail tech info (bio, tools, designs, availability)
+
+**appointments/{id}** — Booking linking a client to a tech (date, status, notes)
+
+**threads/{id}** — Conversation between two users, with a `messages` subcollection

@@ -1,36 +1,42 @@
 import { Polish } from "@/constants/theme";
+import { useAuth } from "@/contexts/AuthContext";
+import { db } from "@/firebase/config";
 import { Ionicons } from "@expo/vector-icons";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import {
-  addDoc,
-  collection,
-  doc,
-  getDoc,
-  Timestamp,
+    addDoc,
+    collection,
+    doc,
+    getDocFromServer,
+    Timestamp,
 } from "firebase/firestore";
 import React, { useEffect, useState } from "react";
 import {
-  Alert,
-  Platform,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
+    Alert,
+    Platform,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { db } from "../../../firebase/config";
 
 export default function BookScreen() {
   const insets = useSafeAreaInsets();
+  const { user } = useAuth();
   const { id, name } = useLocalSearchParams<{ id?: string; name?: string }>();
   const router = useRouter();
 
   const [note, setNote] = useState("");
   const [confirmed, setConfirmed] = useState(false);
   const [techName, setTechName] = useState<string | null>(name ?? null);
+  const [techTools, setTechTools] = useState<string[]>([]);
+  const [techDesigns, setTechDesigns] = useState<string[]>([]);
+  const [techAvailability, setTechAvailability] = useState<string[]>([]);
+  const [techLoading, setTechLoading] = useState(true);
   const [dateTime, setDateTime] = useState<Date | null>(null);
   const [showPicker, setShowPicker] = useState(false);
   const [pickerMode, setPickerMode] = useState<"date" | "time">("date");
@@ -38,50 +44,61 @@ export default function BookScreen() {
 
   useEffect(() => {
     let mounted = true;
+    setTechLoading(true);
 
-    async function loadName() {
-      // If the route provided a name param, prefer it and update immediately
-      if (name) {
-        setTechName(name);
-        return;
-      }
-
+    async function loadTech() {
       if (!id) {
-        setTechName(null);
+        setTechName(name ?? null);
+        setTechTools([]);
+        setTechDesigns([]);
+        setTechAvailability([]);
+        setTechLoading(false);
         return;
       }
-
-      // Clear previous name while loading new one (prevents showing stale name)
-      setTechName(null);
-
+      if (name) setTechName(name);
+      else setTechName(null);
       try {
-        // Query users collection instead of tech
         const ref = doc(db, "users", id);
-        const snap = await getDoc(ref);
+        const snap = await getDocFromServer(ref);
         if (!mounted) return;
         if (snap.exists()) {
-          const data = snap.data() as any;
-          // Build name from firstName and lastName
-          const firstName = data.firstName || "";
-          const lastName = data.lastName || "";
-          const techName = firstName && lastName 
+          const data = snap.data() as Record<string, unknown>;
+          const firstName = (data.firstName as string) || "";
+          const lastName = (data.lastName as string) || "";
+          const fullName = firstName && lastName
             ? `${firstName} ${lastName}`.trim()
             : firstName || lastName || `Tech ${id}`;
-          setTechName(techName);
+          setTechName(fullName);
+          const np = data.nailTechProfile as Record<string, unknown> | undefined;
+          if (np) {
+            setTechTools(Array.isArray(np.tools) ? (np.tools as string[]) : []);
+            setTechDesigns(Array.isArray(np.designs) ? (np.designs as string[]) : []);
+            const av = np.availabilities as { days?: string[] } | undefined;
+            setTechAvailability(Array.isArray(av?.days) ? av.days : []);
+          } else {
+            setTechTools([]);
+            setTechDesigns([]);
+            setTechAvailability([]);
+          }
         } else {
           setTechName(`Tech ${id}`);
+          setTechTools([]);
+          setTechDesigns([]);
+          setTechAvailability([]);
         }
       } catch (e) {
         if (!mounted) return;
         setTechName(`Tech ${id}`);
+        setTechTools([]);
+        setTechDesigns([]);
+        setTechAvailability([]);
+      } finally {
+        if (mounted) setTechLoading(false);
       }
     }
 
-    loadName();
-
-    return () => {
-      mounted = false;
-    };
+    loadTech();
+    return () => { mounted = false; };
   }, [id, name]);
 
   function showPickerModeLocal(mode: "date" | "time") {
@@ -120,15 +137,16 @@ export default function BookScreen() {
       return;
     }
 
+    if (!user?.uid) {
+      Alert.alert("Sign in required", "Please sign in to book an appointment.");
+      return;
+    }
     try {
       setSubmitting(true);
 
-      // TODO: replace this with the real logged-in user ID from Firebase Auth
-      const fakeClientId = "demo-client-123"; 
-
       await addDoc(collection(db, "appointments"), {
         techId: id,
-        clientId: fakeClientId,
+        clientId: user.uid,
         dateTime: Timestamp.fromDate(dateTime),
         note: note.trim(),
         status: "pending",
@@ -136,13 +154,11 @@ export default function BookScreen() {
       });
 
       setConfirmed(true);
-      // clear the form values (so if the screen remains mounted they are reset)
       setNote("");
       setDateTime(null);
       setShowPicker(false);
       setPickerMode("date");
 
-      // brief success pause then go back to the tech profile
       setTimeout(() => {
         router.back();
       }, 800);
@@ -175,6 +191,23 @@ export default function BookScreen() {
             Book with {techName ?? (id ? `Tech ${id}` : "Unknown")}
           </Text>
         </View>
+
+        {(techTools.length > 0 || techDesigns.length > 0) && (
+          <View style={styles.section}>
+            {techTools.length > 0 && (
+              <>
+                <Text style={styles.label}>Tools / Techniques</Text>
+                <Text style={styles.techTags}>{techTools.join(" · ")}</Text>
+              </>
+            )}
+            {techDesigns.length > 0 && (
+              <>
+                <Text style={[styles.label, techTools.length > 0 && { marginTop: Polish.spacing.lg }]}>Designs</Text>
+                <Text style={styles.techTags}>{techDesigns.join(" · ")}</Text>
+              </>
+            )}
+          </View>
+        )}
 
         <View style={styles.section}>
           <Text style={styles.label}>Preferred date & time</Text>
@@ -353,5 +386,10 @@ const styles = StyleSheet.create({
   confirmText: {
     ...Polish.typography.bodyMedium,
     color: Polish.colors.success,
+  },
+  techTags: {
+    ...Polish.typography.body,
+    color: Polish.colors.textSecondary,
+    lineHeight: 22,
   },
 });

@@ -1,10 +1,13 @@
 import {
-  DESIGNS_HINT,
-  DESIGNS_LABEL,
-  NAIL_TECH_DESIGNS,
-  NAIL_TECH_TOOLS,
-  TOOLS_HINT,
-  TOOLS_LABEL,
+    CUSTOMER_PREFERENCES_OPTIONS,
+    DESIGNS_HINT,
+    DESIGNS_LABEL,
+    NAIL_TECH_DESIGNS,
+    NAIL_TECH_TOOLS,
+    PREFERENCES_HINT,
+    PREFERENCES_LABEL,
+    TOOLS_HINT,
+    TOOLS_LABEL,
 } from '@/constants/nailTechOptions';
 import { Polish } from '@/constants/theme';
 import { NailTechProfile, useAuth, UserType } from '@/contexts/AuthContext';
@@ -13,16 +16,16 @@ import { router } from 'expo-router';
 import { doc, setDoc } from 'firebase/firestore';
 import React, { useState } from 'react';
 import {
-  ActivityIndicator,
-  Alert,
-  KeyboardAvoidingView,
-  Platform,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
+    ActivityIndicator,
+    Alert,
+    KeyboardAvoidingView,
+    Platform,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View,
 } from 'react-native';
 
 export default function SetupScreen() {
@@ -33,13 +36,12 @@ export default function SetupScreen() {
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   
-  // User profile (optional)
-  const [preferences, setPreferences] = useState('');
+  // Single location for both user and nail tech when they have both roles
   const [location, setLocation] = useState('');
+  const [selectedPreferences, setSelectedPreferences] = useState<string[]>([]);
   
   // Nail tech profile (if they have nailTech role)
   const [bio, setBio] = useState('');
-  const [techLocation, setTechLocation] = useState('');
   const [selectedTools, setSelectedTools] = useState<string[]>([]);
   const [selectedDesigns, setSelectedDesigns] = useState<string[]>([]);
   const [availableDays, setAvailableDays] = useState<string[]>([]);
@@ -99,8 +101,8 @@ export default function SetupScreen() {
       return;
     }
     
-    if (isNailTech && !techLocation.trim()) {
-      Alert.alert('Required Fields', 'Please enter your location for nail tech profile');
+    if (isNailTech && !location.trim()) {
+      Alert.alert('Required Fields', 'Please enter your location');
       return;
     }
     
@@ -118,7 +120,7 @@ export default function SetupScreen() {
       let nailTechProfile: NailTechProfile | undefined;
       if (isNailTech) {
         nailTechProfile = {
-          location: techLocation.trim(),
+          location: location.trim(),
           availabilities: {
             days: availableDays,
           },
@@ -148,16 +150,11 @@ export default function SetupScreen() {
         createdAt: userProfile?.createdAt || new Date(),
       };
       
-      // Only add optional user fields if they have values (never add undefined)
-      if (isUser) {
-        const prefsTrimmed = preferences.trim();
-        if (prefsTrimmed) {
-          profileData.preferences = prefsTrimmed;
-        }
-        const locTrimmed = location.trim();
-        if (locTrimmed) {
-          profileData.location = locTrimmed;
-        }
+      if (selectedPreferences.length > 0) {
+        profileData.preferences = [...selectedPreferences];
+      }
+      if ((isUser || isNailTech) && location.trim()) {
+        profileData.location = location.trim();
       }
       
       // Only add nail tech profile if it exists
@@ -167,7 +164,6 @@ export default function SetupScreen() {
       
       await setDoc(doc(db, 'users', user.uid), profileData, { merge: true });
       
-      // Create updated profile for context (can include undefined for local state)
       const updatedProfile = {
         uid: user.uid,
         phoneNumber: user.phoneNumber,
@@ -175,8 +171,8 @@ export default function SetupScreen() {
         firstName: firstName.trim(),
         lastName: lastName.trim(),
         profileCompleted: true,
-        preferences: isUser && preferences.trim() ? preferences.trim() : undefined,
-        location: isUser && location.trim() ? location.trim() : undefined,
+        preferences: selectedPreferences.length > 0 ? [...selectedPreferences] : undefined,
+        location: location.trim() || undefined,
         nailTechProfile: nailTechProfile,
         createdAt: userProfile?.createdAt || new Date(),
       };
@@ -278,24 +274,52 @@ export default function SetupScreen() {
           />
         </View>
         
-        {/* User Profile (optional) */}
-        {isUser && (
+        {/* Location (shared when user and/or nail tech) */}
+        {(isUser || isNailTech) && (
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Your Preferences (Optional)</Text>
-            <TextInput
-              style={[styles.input, styles.textArea]}
-              placeholder="Preferences (e.g., favorite nail styles, colors)"
-              value={preferences}
-              onChangeText={setPreferences}
-              multiline
-              numberOfLines={3}
-            />
+            <Text style={styles.sectionTitle}>Location {isNailTech ? '*' : '(Optional)'}</Text>
             <TextInput
               style={styles.input}
-              placeholder="Location (Optional)"
+              placeholder="Your location"
               value={location}
               onChangeText={setLocation}
             />
+          </View>
+        )}
+
+        {/* User Preferences (multiselect, optional) */}
+        {isUser && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>{PREFERENCES_LABEL} (Optional)</Text>
+            <Text style={styles.optionHint}>{PREFERENCES_HINT}</Text>
+            <View style={styles.chipRow}>
+              {CUSTOMER_PREFERENCES_OPTIONS.map((pref) => (
+                <TouchableOpacity
+                  key={pref}
+                  style={[
+                    styles.chip,
+                    selectedPreferences.includes(pref) && styles.chipSelected,
+                  ]}
+                  onPress={() => {
+                    if (selectedPreferences.includes(pref)) {
+                      setSelectedPreferences(selectedPreferences.filter((p) => p !== pref));
+                    } else {
+                      setSelectedPreferences([...selectedPreferences, pref]);
+                    }
+                  }}
+                  activeOpacity={0.8}
+                >
+                  <Text
+                    style={[
+                      styles.chipText,
+                      selectedPreferences.includes(pref) && styles.chipTextSelected,
+                    ]}
+                  >
+                    {pref}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
           </View>
         )}
         
@@ -303,13 +327,6 @@ export default function SetupScreen() {
         {isNailTech && (
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Nail Tech Profile</Text>
-            
-            <TextInput
-              style={styles.input}
-              placeholder="Location *"
-              value={techLocation}
-              onChangeText={setTechLocation}
-            />
             
             <TextInput
               style={[styles.input, styles.textArea]}

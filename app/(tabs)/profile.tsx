@@ -1,155 +1,204 @@
+// Tab Profile screen – same as app/profile.tsx but without back button (tab root)
 import {
-  CUSTOMER_PREFERENCES_OPTIONS,
-  DESIGNS_HINT,
-  DESIGNS_LABEL,
-  LOCATION_OPTIONS,
-  NAIL_TECH_DESIGNS,
-  NAIL_TECH_TOOLS,
-  PREFERENCES_HINT,
-  TOOLS_HINT,
-  TOOLS_LABEL,
-} from '@/constants/nailTechOptions';
-import { Polish } from '@/constants/theme';
-import { NailTechProfile, useAuth, UserType } from '@/contexts/AuthContext';
-import { auth, db } from '@/firebase/config';
-import { Ionicons } from '@expo/vector-icons';
-import { router } from 'expo-router';
-import { signOut } from 'firebase/auth';
-import { doc, getDocFromServer, setDoc } from 'firebase/firestore';
-import React, { useEffect, useState } from 'react';
+    CUSTOMER_PREFERENCES_OPTIONS,
+    DESIGNS_HINT,
+    DESIGNS_LABEL,
+    LOCATION_OPTIONS,
+    NAIL_TECH_DESIGNS,
+    NAIL_TECH_TOOLS,
+    PREFERENCES_HINT,
+    TOOLS_HINT,
+    TOOLS_LABEL,
+} from "@/constants/nailTechOptions";
+import { Polish } from "@/constants/theme";
+import { NailTechProfile, useAuth, UserType } from "@/contexts/AuthContext";
+import { auth, db } from "@/firebase/config";
+import { Ionicons } from "@expo/vector-icons";
+import { router } from "expo-router";
+import { signOut } from "firebase/auth";
+import { doc, getDocFromServer, setDoc } from "firebase/firestore";
+import React, { useEffect, useState } from "react";
 import {
-  ActivityIndicator,
-  Alert,
-  Platform,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
-} from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+    ActivityIndicator,
+    Alert,
+    Platform,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View,
+} from "react-native";
 
-export default function ProfileScreen() {
-  const insets = useSafeAreaInsets();
+export default function ProfileTabScreen() {
   const { user, userProfile, setUserProfile } = useAuth();
   const [loading, setLoading] = useState(false);
   const [editing, setEditing] = useState(false);
-  
-  // Basic info
-  const [firstName, setFirstName] = useState(userProfile?.firstName || '');
-  const [lastName, setLastName] = useState(userProfile?.lastName || '');
-  
-  // User profile (optional). Single location for both user and nail tech when they have both roles.
+
+  const [firstName, setFirstName] = useState(userProfile?.firstName || "");
+  const [lastName, setLastName] = useState(userProfile?.lastName || "");
   const [location, setLocation] = useState(() => {
-    const saved = userProfile?.location || userProfile?.nailTechProfile?.location || '';
-    return LOCATION_OPTIONS.includes(saved as any) ? saved : '';
+    const saved = userProfile?.location || userProfile?.nailTechProfile?.location || "";
+    return LOCATION_OPTIONS.includes(saved as any) ? saved : "";
   });
   const [selectedPreferences, setSelectedPreferences] = useState<string[]>(
-    () => Array.isArray(userProfile?.preferences) ? userProfile.preferences : (userProfile?.preferences ? [userProfile.preferences] : [])
+    () =>
+      Array.isArray(userProfile?.preferences)
+        ? userProfile.preferences
+        : userProfile?.preferences
+          ? [userProfile.preferences]
+          : []
   );
-  
-  // Nail tech profile
-  const [bio, setBio] = useState(userProfile?.nailTechProfile?.bio || '');
-  const [selectedTools, setSelectedTools] = useState<string[]>(userProfile?.nailTechProfile?.tools || []);
-  const [selectedDesigns, setSelectedDesigns] = useState<string[]>(userProfile?.nailTechProfile?.designs || []);
-  const [availableDays, setAvailableDays] = useState<string[]>(userProfile?.nailTechProfile?.availabilities?.days || []);
-  
-  // Editable roles when in edit mode; otherwise use saved profile
-  const [selectedRoles, setSelectedRoles] = useState<UserType[]>(userProfile?.roles ?? []);
-  
-  const isNailTech = editing ? selectedRoles.includes('nailTech') : (userProfile?.roles?.includes('nailTech') ?? false);
-  const isUser = editing ? selectedRoles.includes('user') : (userProfile?.roles?.includes('user') ?? false);
-  
-  const daysOfWeek = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
-  
+  const [bio, setBio] = useState(userProfile?.nailTechProfile?.bio || "");
+  const [selectedTools, setSelectedTools] = useState<string[]>(
+    userProfile?.nailTechProfile?.tools || []
+  );
+  const [selectedDesigns, setSelectedDesigns] = useState<string[]>(
+    userProfile?.nailTechProfile?.designs || []
+  );
+  const [availableDays, setAvailableDays] = useState<string[]>(
+    userProfile?.nailTechProfile?.availabilities?.days || []
+  );
+  const [selectedRoles, setSelectedRoles] = useState<UserType[]>(
+    userProfile?.roles ?? []
+  );
+
+  const isNailTech = editing
+    ? selectedRoles.includes("nailTech")
+    : (userProfile?.roles?.includes("nailTech") ?? false);
+  const isUser = editing
+    ? selectedRoles.includes("user")
+    : (userProfile?.roles?.includes("user") ?? false);
+  const daysOfWeek = [
+    "Monday",
+    "Tuesday",
+    "Wednesday",
+    "Thursday",
+    "Friday",
+    "Saturday",
+    "Sunday",
+  ];
+
   const toggleRole = (role: UserType) => {
     if (selectedRoles.includes(role)) {
-      // Require at least one role
       if (selectedRoles.length <= 1) return;
       setSelectedRoles(selectedRoles.filter((r) => r !== role));
     } else {
       setSelectedRoles([...selectedRoles, role]);
     }
   };
-  
-  // Sync from saved profile when profile loads or when not editing
+
   useEffect(() => {
     if (userProfile && !editing) {
       if (userProfile.roles?.length) setSelectedRoles(userProfile.roles);
-      setLocation(userProfile.location || userProfile.nailTechProfile?.location || '');
-      setSelectedPreferences(Array.isArray(userProfile.preferences) ? userProfile.preferences : (userProfile.preferences ? [userProfile.preferences] : []));
-      setSelectedTools(Array.isArray(userProfile.nailTechProfile?.tools) ? userProfile.nailTechProfile.tools : []);
-      setSelectedDesigns(Array.isArray(userProfile.nailTechProfile?.designs) ? userProfile.nailTechProfile.designs : []);
-      setAvailableDays(Array.isArray(userProfile.nailTechProfile?.availabilities?.days) ? userProfile.nailTechProfile.availabilities.days : []);
+      setLocation(
+        userProfile.location || userProfile.nailTechProfile?.location || ""
+      );
+      setSelectedPreferences(
+        Array.isArray(userProfile.preferences)
+          ? userProfile.preferences
+          : userProfile.preferences
+            ? [userProfile.preferences]
+            : []
+      );
+      setSelectedTools(
+        Array.isArray(userProfile.nailTechProfile?.tools)
+          ? userProfile.nailTechProfile.tools
+          : []
+      );
+      setSelectedDesigns(
+        Array.isArray(userProfile.nailTechProfile?.designs)
+          ? userProfile.nailTechProfile.designs
+          : []
+      );
+      setAvailableDays(
+        Array.isArray(userProfile.nailTechProfile?.availabilities?.days)
+          ? userProfile.nailTechProfile.availabilities.days
+          : []
+      );
     }
-  }, [userProfile?.roles, userProfile?.location, userProfile?.nailTechProfile?.location, userProfile?.preferences, userProfile?.nailTechProfile?.tools, userProfile?.nailTechProfile?.designs, userProfile?.nailTechProfile?.availabilities?.days, editing]);
+  }, [
+    userProfile?.roles,
+    userProfile?.location,
+    userProfile?.nailTechProfile?.location,
+    userProfile?.preferences,
+    userProfile?.nailTechProfile?.tools,
+    userProfile?.nailTechProfile?.designs,
+    userProfile?.nailTechProfile?.availabilities?.days,
+    editing,
+  ]);
 
-  // Re-fetch profile from Firestore when profile screen mounts so we always show latest (fixes "not showing on my own profile")
   useEffect(() => {
     if (!user?.uid || editing) return;
     let mounted = true;
     (async () => {
       try {
-        const snap = await getDocFromServer(doc(db, 'users', user.uid));
+        const snap = await getDocFromServer(doc(db, "users", user.uid));
         if (!mounted || !snap.exists()) return;
         const data = snap.data();
         const np = data.nailTechProfile;
         setSelectedTools(Array.isArray(np?.tools) ? np.tools : []);
         setSelectedDesigns(Array.isArray(np?.designs) ? np.designs : []);
-        setAvailableDays(Array.isArray(np?.availabilities?.days) ? np.availabilities.days : []);
-        const saved = data.location || np?.location || '';
-        setLocation(LOCATION_OPTIONS.includes(saved as any) ? saved : '');
-        setSelectedPreferences(Array.isArray(data.preferences) ? data.preferences : (data.preferences ? [data.preferences] : []));
+        setAvailableDays(
+          Array.isArray(np?.availabilities?.days) ? np.availabilities.days : []
+        );
+        const saved = data.location || np?.location || "";
+        setLocation(LOCATION_OPTIONS.includes(saved as any) ? saved : "");
+        setSelectedPreferences(
+          Array.isArray(data.preferences)
+            ? data.preferences
+            : data.preferences
+              ? [data.preferences]
+              : []
+        );
       } catch (_) {}
     })();
-    return () => { mounted = false; };
+    return () => {
+      mounted = false;
+    };
   }, [user?.uid, editing]);
-  
+
   const toggleDay = (day: string) => {
     if (availableDays.includes(day)) {
-      setAvailableDays(availableDays.filter(d => d !== day));
+      setAvailableDays(availableDays.filter((d) => d !== day));
     } else {
       setAvailableDays([...availableDays, day]);
     }
   };
-
   const toggleTool = (tool: string) => {
     if (selectedTools.includes(tool)) {
-      setSelectedTools(selectedTools.filter(t => t !== tool));
+      setSelectedTools(selectedTools.filter((t) => t !== tool));
     } else {
       setSelectedTools([...selectedTools, tool]);
     }
   };
-
   const toggleDesign = (design: string) => {
     if (selectedDesigns.includes(design)) {
-      setSelectedDesigns(selectedDesigns.filter(d => d !== design));
+      setSelectedDesigns(selectedDesigns.filter((d) => d !== design));
     } else {
       setSelectedDesigns([...selectedDesigns, design]);
     }
   };
-  
+
   const handleSave = async () => {
     if (!firstName.trim() || !lastName.trim()) {
-      Alert.alert('Required Fields', 'Please enter your first and last name');
+      Alert.alert("Required Fields", "Please enter your first and last name");
       return;
     }
-    
     if (selectedRoles.length === 0) {
-      Alert.alert('Select a role', 'Please choose at least one: Customer or Nail Tech');
+      Alert.alert(
+        "Select a role",
+        "Please choose at least one: Customer or Nail Tech"
+      );
       return;
     }
     if (isNailTech && !location) {
-      Alert.alert('Required Fields', 'Please select your location');
+      Alert.alert("Required Fields", "Please select your location");
       return;
     }
-    
     setLoading(true);
     try {
-      if (!user || !userProfile) throw new Error('User not found');
-      
-      // Build nail tech profile if applicable
+      if (!user || !userProfile) throw new Error("User not found");
       let nailTechProfile: NailTechProfile | undefined;
       if (isNailTech) {
         nailTechProfile = {
@@ -157,24 +206,27 @@ export default function ProfileScreen() {
           bio: bio.trim() || undefined,
           location: location,
           tools: selectedTools.length > 0 ? [...selectedTools] : undefined,
-          designs: selectedDesigns.length > 0 ? [...selectedDesigns] : undefined,
+          designs:
+            selectedDesigns.length > 0 ? [...selectedDesigns] : undefined,
           availabilities: {
             ...userProfile.nailTechProfile?.availabilities,
             days: availableDays,
           },
         };
       }
-      
       const updatedProfile = {
         ...userProfile,
         roles: selectedRoles,
         firstName: firstName.trim(),
         lastName: lastName.trim(),
-        preferences: isUser && selectedPreferences.length > 0 ? [...selectedPreferences] : undefined,
-        location: (isUser || isNailTech) && location ? location : undefined,
+        preferences:
+          isUser && selectedPreferences.length > 0
+            ? [...selectedPreferences]
+            : undefined,
+        location:
+          (isUser || isNailTech) && location ? location : undefined,
         nailTechProfile: nailTechProfile,
       };
-      
       const writeData: Record<string, unknown> = {
         phoneNumber: user.phoneNumber,
         roles: selectedRoles,
@@ -183,92 +235,69 @@ export default function ProfileScreen() {
         profileCompleted: true,
         createdAt: userProfile.createdAt || new Date(),
       };
-      if (updatedProfile.preferences != null && updatedProfile.preferences !== undefined) {
-        writeData.preferences = Array.isArray(updatedProfile.preferences) ? updatedProfile.preferences : updatedProfile.preferences;
+      if (
+        updatedProfile.preferences != null &&
+        updatedProfile.preferences !== undefined
+      ) {
+        writeData.preferences = Array.isArray(updatedProfile.preferences)
+          ? updatedProfile.preferences
+          : updatedProfile.preferences;
       }
       if (updatedProfile.location) writeData.location = updatedProfile.location;
-      if (updatedProfile.nailTechProfile != null) writeData.nailTechProfile = updatedProfile.nailTechProfile;
-      await setDoc(doc(db, 'users', user.uid), writeData, { merge: true });
-      
+      if (updatedProfile.nailTechProfile != null)
+        writeData.nailTechProfile = updatedProfile.nailTechProfile;
+      await setDoc(doc(db, "users", user.uid), writeData, { merge: true });
       setUserProfile(updatedProfile);
-      
       setEditing(false);
-      Alert.alert('Success', 'Profile updated successfully');
+      Alert.alert("Success", "Profile updated successfully");
     } catch (error: any) {
-      console.error('Profile update error:', error);
-      Alert.alert('Error', error.message || 'Failed to update profile');
+      console.error("Profile update error:", error);
+      Alert.alert("Error", error.message || "Failed to update profile");
     } finally {
       setLoading(false);
     }
   };
-  
+
   const performLogout = async () => {
     try {
       setLoading(true);
-      console.log('Logging out...');
       await signOut(auth);
-      console.log('Sign out successful');
-      // The AuthContext's onAuthStateChanged will detect the logout
-      // and the routing in _layout.tsx will automatically redirect to /auth
-      // But we'll also force navigation just in case
       setTimeout(() => {
-        router.replace('/auth' as any);
+        router.replace("/auth" as any);
       }, 100);
     } catch (error: any) {
-      console.error('Logout error:', error);
+      console.error("Logout error:", error);
       setLoading(false);
-      Alert.alert('Error', error.message || 'Failed to log out. Please try again.');
+      Alert.alert(
+        "Error",
+        error.message || "Failed to log out. Please try again."
+      );
     }
   };
 
   const handleLogout = () => {
-    console.log('Logout button clicked');
-    
-    // On web, Alert.alert might not work well, so use window.confirm as fallback
-    if (Platform.OS === 'web' && typeof window !== 'undefined' && window.confirm) {
-      const confirmed = window.confirm('Are you sure you want to log out?');
-      if (confirmed) {
+    if (Platform.OS === "web" && typeof window !== "undefined" && window.confirm) {
+      if (window.confirm("Are you sure you want to log out?")) {
         performLogout();
       }
     } else {
-      // On native, use Alert
       Alert.alert(
-        'Log Out',
-        'Are you sure you want to log out?',
+        "Log Out",
+        "Are you sure you want to log out?",
         [
-          { 
-            text: 'Cancel', 
-            style: 'cancel',
-          },
-          {
-            text: 'Log Out',
-            style: 'destructive',
-            onPress: performLogout,
-          },
+          { text: "Cancel", style: "cancel" },
+          { text: "Log Out", style: "destructive", onPress: performLogout },
         ],
         { cancelable: true }
       );
     }
   };
-  
-  const displayName = [firstName, lastName].filter(Boolean).join(' ').trim() || 'Profile';
-  const topPadding = insets.top + 24;
 
   return (
-    <ScrollView
-      style={styles.container}
-      contentContainerStyle={[styles.content, { paddingTop: topPadding }]}
-      showsVerticalScrollIndicator={false}
-    >
+    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <View style={styles.header}>
-        <TouchableOpacity
-          onPress={() => router.back()}
-          style={styles.backButton}
-          activeOpacity={0.7}
-        >
-          <Ionicons name="arrow-back" size={24} color={Polish.colors.text} />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>Profile</Text>
+        <View style={styles.backButton} />
+        <Text style={styles.title}>Profile</Text>
         {!editing ? (
           <TouchableOpacity
             onPress={() => {
@@ -280,18 +309,8 @@ export default function ProfileScreen() {
             <Text style={styles.editButton}>Edit</Text>
           </TouchableOpacity>
         ) : (
-          <View style={styles.headerSpacer} />
+          <View style={{ width: 50 }} />
         )}
-      </View>
-
-      <View style={styles.hero}>
-        <View style={styles.avatar}>
-          <Ionicons name="person" size={40} color={Polish.colors.primary} />
-        </View>
-        <Text style={styles.heroTitle}>{displayName}</Text>
-        {userProfile?.phoneNumber ? (
-          <Text style={styles.heroSubtext}>{userProfile.phoneNumber}</Text>
-        ) : null}
       </View>
 
       {editing && (
@@ -300,34 +319,46 @@ export default function ProfileScreen() {
           <View style={styles.roleRow}>
             <TouchableOpacity
               style={[styles.roleChip, isUser && styles.roleChipSelected]}
-              onPress={() => toggleRole('user')}
+              onPress={() => toggleRole("user")}
               activeOpacity={0.8}
             >
               <Ionicons
                 name="person-outline"
                 size={20}
-                color={isUser ? '#fff' : Polish.colors.textSecondary}
+                color={isUser ? "#fff" : Polish.colors.textSecondary}
               />
-              <Text style={[styles.roleChipText, isUser && styles.roleChipTextSelected]}>
+              <Text
+                style={[
+                  styles.roleChipText,
+                  isUser && styles.roleChipTextSelected,
+                ]}
+              >
                 Customer
               </Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={[styles.roleChip, isNailTech && styles.roleChipSelected]}
-              onPress={() => toggleRole('nailTech')}
+              onPress={() => toggleRole("nailTech")}
               activeOpacity={0.8}
             >
               <Ionicons
                 name="sparkles-outline"
                 size={20}
-                color={isNailTech ? '#fff' : Polish.colors.textSecondary}
+                color={isNailTech ? "#fff" : Polish.colors.textSecondary}
               />
-              <Text style={[styles.roleChipText, isNailTech && styles.roleChipTextSelected]}>
+              <Text
+                style={[
+                  styles.roleChipText,
+                  isNailTech && styles.roleChipTextSelected,
+                ]}
+              >
                 Nail Tech
               </Text>
             </TouchableOpacity>
           </View>
-          <Text style={styles.roleHint}>Choose at least one. You can be both.</Text>
+          <Text style={styles.roleHint}>
+            Choose at least one. You can be both.
+          </Text>
         </View>
       )}
 
@@ -349,9 +380,9 @@ export default function ProfileScreen() {
           editable={editing}
           autoCapitalize="words"
         />
-        {!editing && (
-          <Text style={styles.infoText}>Phone: {userProfile?.phoneNumber || 'N/A'}</Text>
-        )}
+        <Text style={styles.infoText}>
+          Phone: {userProfile?.phoneNumber || "N/A"}
+        </Text>
       </View>
 
       {(isUser || isNailTech) && (
@@ -363,7 +394,7 @@ export default function ProfileScreen() {
                 <TouchableOpacity
                   key={loc}
                   style={[styles.chip, location === loc && styles.chipSelected]}
-                  onPress={() => setLocation(location === loc ? '' : loc)}
+                  onPress={() => setLocation(location === loc ? "" : loc)}
                   activeOpacity={0.8}
                 >
                   <Text
@@ -378,8 +409,12 @@ export default function ProfileScreen() {
               ))}
             </View>
           ) : (
-            <Text style={location ? styles.readOnlyText : styles.readOnlyTextMuted}>
-              {location || 'Not specified'}
+            <Text
+              style={
+                location ? styles.readOnlyText : styles.readOnlyTextMuted
+              }
+            >
+              {location || "Not specified"}
             </Text>
           )}
         </View>
@@ -401,9 +436,14 @@ export default function ProfileScreen() {
                     ]}
                     onPress={() => {
                       if (selectedPreferences.includes(pref)) {
-                        setSelectedPreferences(selectedPreferences.filter((p) => p !== pref));
+                        setSelectedPreferences(
+                          selectedPreferences.filter((p) => p !== pref)
+                        );
                       } else {
-                        setSelectedPreferences([...selectedPreferences, pref]);
+                        setSelectedPreferences([
+                          ...selectedPreferences,
+                          pref,
+                        ]);
                       }
                     }}
                     activeOpacity={0.8}
@@ -411,7 +451,8 @@ export default function ProfileScreen() {
                     <Text
                       style={[
                         styles.chipText,
-                        selectedPreferences.includes(pref) && styles.chipTextSelected,
+                        selectedPreferences.includes(pref) &&
+                          styles.chipTextSelected,
                       ]}
                     >
                       {pref}
@@ -422,7 +463,9 @@ export default function ProfileScreen() {
             </>
           ) : (
             selectedPreferences.length > 0 && (
-              <Text style={styles.readOnlyText}>{selectedPreferences.join(', ')}</Text>
+              <Text style={styles.readOnlyText}>
+                {selectedPreferences.join(", ")}
+              </Text>
             )
           )}
         </View>
@@ -432,7 +475,11 @@ export default function ProfileScreen() {
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Nail Tech Profile</Text>
           <TextInput
-            style={[styles.input, styles.textArea, !editing && styles.inputDisabled]}
+            style={[
+              styles.input,
+              styles.textArea,
+              !editing && styles.inputDisabled,
+            ]}
             placeholder="Bio"
             value={bio}
             onChangeText={setBio}
@@ -440,7 +487,6 @@ export default function ProfileScreen() {
             multiline
             numberOfLines={3}
           />
-
           {editing ? (
             <>
               <Text style={styles.label}>{TOOLS_LABEL}</Text>
@@ -467,7 +513,11 @@ export default function ProfileScreen() {
                   </TouchableOpacity>
                 ))}
               </View>
-              <Text style={[styles.label, { marginTop: Polish.spacing.xl }]}>{DESIGNS_LABEL}</Text>
+              <Text
+                style={[styles.label, { marginTop: Polish.spacing.xl }]}
+              >
+                {DESIGNS_LABEL}
+              </Text>
               <Text style={styles.optionHint}>{DESIGNS_HINT}</Text>
               <View style={styles.chipRow}>
                 {NAIL_TECH_DESIGNS.map((design) => (
@@ -483,7 +533,8 @@ export default function ProfileScreen() {
                     <Text
                       style={[
                         styles.chipText,
-                        selectedDesigns.includes(design) && styles.chipTextSelected,
+                        selectedDesigns.includes(design) &&
+                          styles.chipTextSelected,
                       ]}
                     >
                       {design}
@@ -496,19 +547,26 @@ export default function ProfileScreen() {
             <View style={styles.readOnlySection}>
               <Text style={styles.label}>{TOOLS_LABEL}</Text>
               {selectedTools.length > 0 ? (
-                <Text style={styles.readOnlyText}>{selectedTools.join(', ')}</Text>
+                <Text style={styles.readOnlyText}>
+                  {selectedTools.join(", ")}
+                </Text>
               ) : (
                 <Text style={styles.readOnlyTextMuted}>Not specified</Text>
               )}
-              <Text style={[styles.label, { marginTop: Polish.spacing.lg }]}>{DESIGNS_LABEL}</Text>
+              <Text
+                style={[styles.label, { marginTop: Polish.spacing.lg }]}
+              >
+                {DESIGNS_LABEL}
+              </Text>
               {selectedDesigns.length > 0 ? (
-                <Text style={styles.readOnlyText}>{selectedDesigns.join(', ')}</Text>
+                <Text style={styles.readOnlyText}>
+                  {selectedDesigns.join(", ")}
+                </Text>
               ) : (
                 <Text style={styles.readOnlyTextMuted}>Not specified</Text>
               )}
             </View>
           )}
-          
           {editing && (
             <>
               <Text style={styles.label}>Available Days</Text>
@@ -525,7 +583,8 @@ export default function ProfileScreen() {
                     <Text
                       style={[
                         styles.dayButtonText,
-                        availableDays.includes(day) && styles.dayButtonTextSelected,
+                        availableDays.includes(day) &&
+                          styles.dayButtonTextSelected,
                       ]}
                     >
                       {day.slice(0, 3)}
@@ -537,45 +596,58 @@ export default function ProfileScreen() {
           )}
         </View>
       )}
-      
+
       {editing && (
-        <View style={styles.buttonRow}>
+        <View style={styles.buttonContainer}>
           <TouchableOpacity
             style={[styles.button, styles.saveButton]}
             onPress={handleSave}
             disabled={loading}
-            activeOpacity={0.85}
           >
             {loading ? (
               <ActivityIndicator color="#fff" />
             ) : (
-              <Text style={styles.buttonText}>Save</Text>
+              <Text style={styles.buttonText}>Save Changes</Text>
             )}
           </TouchableOpacity>
           <TouchableOpacity
             style={[styles.button, styles.cancelButton]}
             onPress={() => {
               setSelectedRoles(userProfile?.roles ?? []);
-              setFirstName(userProfile?.firstName || '');
-              setLastName(userProfile?.lastName || '');
-              const saved = userProfile?.location || userProfile?.nailTechProfile?.location || '';
-              setLocation(LOCATION_OPTIONS.includes(saved as any) ? saved : '');
-              setSelectedPreferences(Array.isArray(userProfile?.preferences) ? userProfile.preferences : (userProfile?.preferences ? [userProfile.preferences] : []));
-              setBio(userProfile?.nailTechProfile?.bio || '');
+              setFirstName(userProfile?.firstName || "");
+              setLastName(userProfile?.lastName || "");
+              const saved =
+                userProfile?.location ||
+                userProfile?.nailTechProfile?.location ||
+                "";
+              setLocation(LOCATION_OPTIONS.includes(saved as any) ? saved : "");
+              setSelectedPreferences(
+                Array.isArray(userProfile?.preferences)
+                  ? userProfile.preferences
+                  : userProfile?.preferences
+                    ? [userProfile.preferences]
+                    : []
+              );
+              setBio(userProfile?.nailTechProfile?.bio || "");
               setSelectedTools(userProfile?.nailTechProfile?.tools || []);
               setSelectedDesigns(userProfile?.nailTechProfile?.designs || []);
-              setAvailableDays(userProfile?.nailTechProfile?.availabilities?.days || []);
+              setAvailableDays(
+                userProfile?.nailTechProfile?.availabilities?.days || []
+              );
               setEditing(false);
             }}
-            activeOpacity={0.85}
           >
-            <Text style={[styles.buttonText, styles.cancelButtonText]}>Cancel</Text>
+            <Text style={[styles.buttonText, { color: "#000" }]}>Cancel</Text>
           </TouchableOpacity>
         </View>
       )}
 
       <TouchableOpacity
-        style={[styles.button, styles.logoutButton, loading && styles.buttonDisabled]}
+        style={[
+          styles.button,
+          styles.logoutButton,
+          loading && styles.buttonDisabled,
+        ]}
         onPress={handleLogout}
         disabled={loading}
       >
@@ -595,64 +667,39 @@ const styles = StyleSheet.create({
     backgroundColor: Polish.colors.background,
   },
   content: {
-    paddingHorizontal: Polish.spacing.xl,
+    padding: Polish.spacing.xl,
+    paddingTop: 60,
     paddingBottom: 40,
   },
   header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: Polish.spacing.xl,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: Polish.spacing.xxxl,
   },
   backButton: {
-    padding: Polish.spacing.sm,
-    marginRight: Polish.spacing.sm,
+    width: 40,
+    height: 40,
   },
-  headerTitle: {
+  title: {
     ...Polish.typography.title,
     color: Polish.colors.text,
     flex: 1,
-    textAlign: 'center',
-  },
-  headerSpacer: {
-    width: 50,
+    textAlign: "center",
   },
   editButton: {
     ...Polish.typography.button,
     color: Polish.colors.primary,
   },
-  hero: {
-    alignItems: 'center',
-    marginBottom: Polish.spacing.xxl,
-  },
-  avatar: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: Polish.colors.accent + '50',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: Polish.spacing.lg,
-  },
-  heroTitle: {
-    ...Polish.typography.title,
-    color: Polish.colors.text,
-    textAlign: 'center',
-  },
-  heroSubtext: {
-    ...Polish.typography.caption,
-    color: Polish.colors.textMuted,
-    marginTop: Polish.spacing.sm,
-  },
   roleRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
+    flexDirection: "row",
+    flexWrap: "wrap",
     gap: Polish.spacing.md,
     marginBottom: Polish.spacing.sm,
   },
   roleChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: Polish.spacing.sm,
     paddingVertical: Polish.spacing.md,
     paddingHorizontal: Polish.spacing.lg,
@@ -670,20 +717,14 @@ const styles = StyleSheet.create({
     color: Polish.colors.textSecondary,
   },
   roleChipTextSelected: {
-    color: '#fff',
+    color: "#fff",
   },
   roleHint: {
     ...Polish.typography.caption,
     color: Polish.colors.textMuted,
   },
   section: {
-    backgroundColor: Polish.colors.surface,
-    borderRadius: Polish.radius.lg,
-    padding: Polish.spacing.xl,
-    marginBottom: Polish.spacing.xxl,
-    borderWidth: 1,
-    borderColor: Polish.colors.borderLight,
-    ...Polish.shadowSm,
+    marginBottom: Polish.spacing.xxxl,
   },
   sectionTitle: {
     ...Polish.typography.subtitle,
@@ -705,7 +746,7 @@ const styles = StyleSheet.create({
   },
   textArea: {
     minHeight: 80,
-    textAlignVertical: 'top',
+    textAlignVertical: "top",
   },
   infoText: {
     ...Polish.typography.caption,
@@ -724,8 +765,8 @@ const styles = StyleSheet.create({
     marginBottom: Polish.spacing.md,
   },
   chipRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
+    flexDirection: "row",
+    flexWrap: "wrap",
     marginBottom: Polish.spacing.lg,
     gap: Polish.spacing.sm,
   },
@@ -744,10 +785,10 @@ const styles = StyleSheet.create({
   chipText: {
     ...Polish.typography.caption,
     color: Polish.colors.textSecondary,
-    fontWeight: '500',
+    fontWeight: "500",
   },
   chipTextSelected: {
-    color: '#fff',
+    color: "#fff",
   },
   readOnlySection: {
     marginBottom: Polish.spacing.lg,
@@ -761,8 +802,8 @@ const styles = StyleSheet.create({
     color: Polish.colors.textMuted,
   },
   daysContainer: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
+    flexDirection: "row",
+    flexWrap: "wrap",
     marginBottom: Polish.spacing.lg,
     gap: Polish.spacing.sm,
   },
@@ -783,34 +824,28 @@ const styles = StyleSheet.create({
   dayButtonText: {
     ...Polish.typography.caption,
     color: Polish.colors.textSecondary,
-    fontWeight: '500',
+    fontWeight: "500",
   },
   dayButtonTextSelected: {
-    color: '#fff',
+    color: "#fff",
   },
-  buttonRow: {
-    flexDirection: 'row',
-    gap: Polish.spacing.md,
+  buttonContainer: {
+    marginTop: Polish.spacing.sm,
     marginBottom: Polish.spacing.lg,
   },
   button: {
-    flex: 1,
-    borderRadius: Polish.radius.lg,
+    borderRadius: Polish.radius.md,
     padding: Polish.spacing.lg,
-    alignItems: 'center',
-    justifyContent: 'center',
-    ...Polish.shadow,
+    alignItems: "center",
+    marginBottom: Polish.spacing.md,
   },
   saveButton: {
     backgroundColor: Polish.colors.primary,
   },
   cancelButton: {
-    backgroundColor: Polish.colors.surface,
-    borderWidth: 2,
+    backgroundColor: Polish.colors.borderLight,
+    borderWidth: 1,
     borderColor: Polish.colors.border,
-  },
-  cancelButtonText: {
-    color: Polish.colors.text,
   },
   logoutButton: {
     backgroundColor: Polish.colors.error,
@@ -821,6 +856,6 @@ const styles = StyleSheet.create({
   },
   buttonText: {
     ...Polish.typography.button,
-    color: '#fff',
+    color: "#fff",
   },
 });

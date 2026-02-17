@@ -24,7 +24,7 @@ export interface UserProfile {
   firstName?: string;
   lastName?: string;
   profileCompleted: boolean; // Whether they've completed the setup
-  preferences?: string; // User preferences
+  preferences?: string | string[]; // User preferences (string for legacy, array for multiselect)
   location?: string; // User location (optional)
   nailTechProfile?: NailTechProfile; // Only if they have nailTech role
   createdAt?: Date;
@@ -69,8 +69,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           
           if (userDoc.exists()) {
             const data = userDoc.data();
-            // Support both old format (single userType) and new format (roles array)
-            const roles = data.roles || (data.userType ? [data.userType] : ['user']);
+            // Normalize roles: never default to ['user'] so tech-only users get tech Home
+            const roles = Array.isArray(data.roles)
+              ? data.roles
+              : data.roles
+                ? [data.roles]
+                : data.userType
+                  ? [data.userType]
+                  : [];
             setUserProfile({
               uid: firebaseUser.uid,
               phoneNumber: firebaseUser.phoneNumber,
@@ -78,7 +84,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               firstName: data.firstName,
               lastName: data.lastName,
               profileCompleted: data.profileCompleted ?? false,
-              preferences: data.preferences,
+              preferences: Array.isArray(data.preferences) ? data.preferences : data.preferences,
               location: data.location,
               nailTechProfile: data.nailTechProfile,
               createdAt: data.createdAt?.toDate(),
@@ -115,9 +121,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         createdAt: profile.createdAt || new Date(),
       };
       
-      // Only include optional fields if they have values (not undefined/null)
       if (profile.preferences !== undefined && profile.preferences !== null) {
-        profileData.preferences = profile.preferences;
+        profileData.preferences = Array.isArray(profile.preferences)
+          ? profile.preferences
+          : profile.preferences;
       }
       if (profile.location !== undefined && profile.location !== null) {
         profileData.location = profile.location;

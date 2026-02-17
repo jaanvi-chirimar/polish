@@ -93,8 +93,9 @@ function RootLayoutNav() {
           <Stack.Screen name="setup" />
           <Stack.Screen name="profile" />
           <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-          <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal' }} />
-        </Stack>
+          <Stack.Screen name="book/[id]" />
+          <Stack.Screen name="tech/[id]" />
+          </Stack>
         <StatusBar style="auto" />
       </ThemeProvider>
     );
@@ -107,7 +108,8 @@ function RootLayoutNav() {
         <Stack.Screen name="setup" />
         <Stack.Screen name="profile" />
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-        <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal' }} />
+        <Stack.Screen name="book/[id]" />
+        <Stack.Screen name="tech/[id]" />
       </Stack>
       <StatusBar style="auto" />
     </ThemeProvider>

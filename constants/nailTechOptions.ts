@@ -32,3 +32,31 @@ export const TOOLS_HINT = 'Basic professional tools are assumed.';
 
 export const DESIGNS_LABEL = 'Designs';
 export const DESIGNS_HINT = 'Select all styles you offer.';
+
+/** Customer preferences: styles / services they're interested in */
+export const CUSTOMER_PREFERENCES_OPTIONS = [
+  'Gel manicures',
+  'Acrylics',
+  'Nail art',
+  'French',
+  'Simple polish',
+  'Luxury / spa',
+  'Nail art / designs',
+  'Extensions',
+  'Chrome / metallic',
+  'Minimalist',
+  'Custom / special requests',
+] as const;
+
+export const PREFERENCES_LABEL = 'Preferences';
+export const PREFERENCES_HINT = 'Select what you\'re interested in (optional).';
+
+/** Location options (single-select) */
+export const LOCATION_OPTIONS = [
+  'North',
+  'West',
+  'Central',
+  'Collegetown',
+  'Downtown',
+  'Other',
+] as const;

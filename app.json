@@ -10,10 +10,11 @@
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.polish.app",
+      "bundleIdentifier": "com.jaanvi.polish",
       "googleServicesFile": "./GoogleService-Info.plist"
     },
     "android": {
+      "package": "com.jaanvi.polish",
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
@@ -28,6 +29,8 @@
       "favicon": "./assets/images/favicon.png"
     },
     "plugins": [
+      "./plugins/withFirebasePodfile.js",
+      "./plugins/withFirebaseAppDelegate.js",
       "expo-router",
       [
         "expo-splash-screen",
