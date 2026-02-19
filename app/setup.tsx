@@ -54,6 +54,10 @@ export default function SetupScreen() {
   const isNailTech = roles.includes('nailTech');
   const isUser = roles.includes('user');
   
+  const toggleItem = (list: string[], item: string, setter: (v: string[]) => void) => {
+    setter(list.includes(item) ? list.filter(i => i !== item) : [...list, item]);
+  };
+
   const toggleRole = (role: UserType) => {
     if (selectedRoles.includes(role)) {
       setSelectedRoles(selectedRoles.filter(r => r !== role));
@@ -61,32 +65,8 @@ export default function SetupScreen() {
       setSelectedRoles([...selectedRoles, role]);
     }
   };
-  
+
   const daysOfWeek = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
-  
-  const toggleDay = (day: string) => {
-    if (availableDays.includes(day)) {
-      setAvailableDays(availableDays.filter(d => d !== day));
-    } else {
-      setAvailableDays([...availableDays, day]);
-    }
-  };
-
-  const toggleTool = (tool: string) => {
-    if (selectedTools.includes(tool)) {
-      setSelectedTools(selectedTools.filter(t => t !== tool));
-    } else {
-      setSelectedTools([...selectedTools, tool]);
-    }
-  };
-
-  const toggleDesign = (design: string) => {
-    if (selectedDesigns.includes(design)) {
-      setSelectedDesigns(selectedDesigns.filter(d => d !== design));
-    } else {
-      setSelectedDesigns([...selectedDesigns, design]);
-    }
-  };
   
   const handleSubmit = async () => {
     // Validate required fields
@@ -300,13 +280,7 @@ export default function SetupScreen() {
                     styles.chip,
                     selectedPreferences.includes(pref) && styles.chipSelected,
                   ]}
-                  onPress={() => {
-                    if (selectedPreferences.includes(pref)) {
-                      setSelectedPreferences(selectedPreferences.filter((p) => p !== pref));
-                    } else {
-                      setSelectedPreferences([...selectedPreferences, pref]);
-                    }
-                  }}
+                  onPress={() => toggleItem(selectedPreferences, pref, setSelectedPreferences)}
                   activeOpacity={0.8}
                 >
                   <Text
@@ -347,7 +321,7 @@ export default function SetupScreen() {
                     styles.chip,
                     selectedTools.includes(tool) && styles.chipSelected,
                   ]}
-                  onPress={() => toggleTool(tool)}
+                  onPress={() => toggleItem(selectedTools, tool, setSelectedTools)}
                   activeOpacity={0.8}
                 >
                   <Text
@@ -372,7 +346,7 @@ export default function SetupScreen() {
                     styles.chip,
                     selectedDesigns.includes(design) && styles.chipSelected,
                   ]}
-                  onPress={() => toggleDesign(design)}
+                  onPress={() => toggleItem(selectedDesigns, design, setSelectedDesigns)}
                   activeOpacity={0.8}
                 >
                   <Text
@@ -396,7 +370,7 @@ export default function SetupScreen() {
                     styles.dayButton,
                     availableDays.includes(day) && styles.dayButtonSelected,
                   ]}
-                  onPress={() => toggleDay(day)}
+                  onPress={() => toggleItem(availableDays, day, setAvailableDays)}
                 >
                   <Text
                     style={[

@@ -21,7 +21,15 @@ module.exports = function withFirebasePodfile(config) {
       if (!podfile.includes("pod 'Firebase/Core'")) {
         podfile = podfile.replace(
           /pod 'GoogleUtilities', :modular_headers => true/,
-          "pod 'GoogleUtilities', :modular_headers => true\n  pod 'Firebase/Core'\n  pod 'Firebase/Auth'"
+          "pod 'GoogleUtilities', :modular_headers => true\n  pod 'FirebaseCore', :modular_headers => true\n  pod 'Firebase/Core'\n  pod 'Firebase/Auth'"
+        );
+      }
+
+      // Ensure FirebaseCore has modular_headers (in case Firebase/Core was already added without it)
+      if (podfile.includes("pod 'Firebase/Core'") && !podfile.includes("pod 'FirebaseCore', :modular_headers => true")) {
+        podfile = podfile.replace(
+          /pod 'Firebase\/Core'/,
+          "pod 'FirebaseCore', :modular_headers => true\n  pod 'Firebase/Core'"
         );
       }
 

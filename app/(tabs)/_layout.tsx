@@ -48,6 +48,12 @@ export default function TabsLayout() {
             <Ionicons name="mail-outline" size={size} color={color} />
           ),
         }}
+        listeners={({ navigation }) => ({
+          tabPress: (e) => {
+            e.preventDefault();
+            navigation.navigate("inbox", { screen: "index" });
+          },
+        })}
       />
       <Tabs.Screen
         name="profile"

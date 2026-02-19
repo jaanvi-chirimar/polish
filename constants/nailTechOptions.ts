@@ -51,6 +51,19 @@ export const CUSTOMER_PREFERENCES_OPTIONS = [
 export const PREFERENCES_LABEL = 'Preferences';
 export const PREFERENCES_HINT = 'Select what you\'re interested in (optional).';
 
+/** Appointment service types */
+export const APPOINTMENT_TYPES = ['Full Set', 'Full Set + Removal', 'Removal'] as const;
+
+/** Accepted payment methods */
+export const PAYMENT_METHOD_OPTIONS = ['Cash', 'Venmo', 'Zelle', 'CashApp', 'Card'] as const;
+
+/** Default pricing tier configs (tech can override name/description/price) */
+export const DEFAULT_PRICING_TIERS = {
+  tier1: { name: 'Solid Color', description: 'Single color, no design', price: 0, enabled: false },
+  tier2: { name: 'Minimal', description: 'Simple design or accent nail', price: 0, enabled: false },
+  tier3: { name: 'Full Design', description: 'Custom art, full nail design', price: 0, enabled: false },
+} as const;
+
 /** Location options (single-select) */
 export const LOCATION_OPTIONS = [
   'North',

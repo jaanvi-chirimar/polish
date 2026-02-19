@@ -1,7 +1,7 @@
 import { Polish } from '@/constants/theme';
 import { useAuth, UserType } from '@/contexts/AuthContext';
-import { auth, db } from '@/firebase/config';
-import { sendPhoneVerificationCode } from '@/lib/phoneAuth';
+import { auth, db, firebaseConfig } from '@/firebase/config';
+import { formatPhoneNumber, sendPhoneVerificationCode } from '@/lib/phoneAuth';
 import { FirebaseRecaptchaVerifierModal } from 'expo-firebase-recaptcha';
 import { router } from 'expo-router';
 import { ConfirmationResult } from 'firebase/auth';
@@ -18,7 +18,6 @@ import {
     TouchableOpacity,
     View,
 } from 'react-native';
-
 type AuthStep = 'phone' | 'otp' | 'roleSelection';
 
 export default function AuthScreen() {
@@ -30,7 +29,7 @@ export default function AuthScreen() {
   const [loading, setLoading] = useState(false);
   const [selectedRoles, setSelectedRoles] = useState<UserType[]>([]);
   const [isSignUp, setIsSignUp] = useState(true);
-  
+
   // reCAPTCHA verifier for iOS/Android
   const recaptchaVerifier = useRef<FirebaseRecaptchaVerifierModal | null>(null);
 
@@ -41,17 +40,6 @@ export default function AuthScreen() {
     }
   }, [user]);
 
-  const formatPhoneNumber = (text: string): string => {
-    // Remove all non-digits
-    const cleaned = text.replace(/\D/g, '');
-    
-    // Format as +1 (XXX) XXX-XXXX for US numbers
-    if (cleaned.length <= 1) return cleaned;
-    if (cleaned.length <= 4) return `+1 (${cleaned.slice(1)}`;
-    if (cleaned.length <= 7) return `+1 (${cleaned.slice(1, 4)}) ${cleaned.slice(4)}`;
-    return `+1 (${cleaned.slice(1, 4)}) ${cleaned.slice(4, 7)}-${cleaned.slice(7, 11)}`;
-  };
-
   const handlePhoneSubmit = async () => {
     if (!phoneNumber || phoneNumber.replace(/\D/g, '').length < 10) {
       Alert.alert('Invalid Phone Number', 'Please enter a valid phone number');
@@ -60,9 +48,6 @@ export default function AuthScreen() {
 
     setLoading(true);
     try {
-      // Following Firebase docs: send verification code
-      // For iOS/Android, pass the recaptcha verifier from the modal
-      // The ref itself acts as the verifier
       const verifier = Platform.OS !== 'web' ? recaptchaVerifier.current : undefined;
       const confirmation = await sendPhoneVerificationCode(phoneNumber, undefined, verifier as any);
       setConfirmationResult(confirmation);
@@ -70,13 +55,7 @@ export default function AuthScreen() {
     } catch (error: any) {
       console.error('Phone auth error:', error);
       const errorMessage = error.message || 'Failed to send verification code.';
-      
-      // Log full error for debugging
-      console.log('Full error:', JSON.stringify(error, null, 2));
-      console.log('Phone number used:', phoneNumber);
-      console.log('Formatted phone:', phoneNumber.replace(/\D/g, ''));
-      
-      // Provide helpful message for iOS/native
+
       if (Platform.OS !== 'web') {
         Alert.alert(
           'Phone Auth Error',
@@ -107,18 +86,14 @@ export default function AuthScreen() {
 
     setLoading(true);
     try {
-      // Following Firebase docs: use confirmationResult.confirm(code)
       const result = await confirmationResult.confirm(otp);
-      
-      // Check if this is a new user (signup) or existing user (login)
+
       const userDocRef = doc(db, 'users', result.user.uid);
       const userDoc = await getDoc(userDocRef);
-      
+
       if (!userDoc.exists()) {
-        // New user - show role selection
         setStep('roleSelection');
       } else {
-        // Existing user - sign in complete
         router.replace('/(tabs)');
       }
     } catch (error: any) {
@@ -140,27 +115,26 @@ export default function AuthScreen() {
 
     setLoading(true);
     try {
-      const user = auth.currentUser;
-      if (!user) throw new Error('User not found');
+      const currentUser = auth.currentUser;
+      if (!currentUser) throw new Error('User not found');
 
-      // Create user profile in Firestore (not completed yet)
-      await setDoc(doc(db, 'users', user.uid), {
-        phoneNumber: user.phoneNumber,
+      await setDoc(doc(db, 'users', currentUser.uid), {
+        phoneNumber: currentUser.phoneNumber ?? null,
+        email: currentUser.email ?? null,
         roles: selectedRoles,
-        profileCompleted: false, // Will be set to true after setup
+        profileCompleted: false,
         createdAt: new Date(),
-      });
+      }, { merge: true });
 
-      // Update auth context
       setUserProfile({
-        uid: user.uid,
-        phoneNumber: user.phoneNumber,
+        uid: currentUser.uid,
+        phoneNumber: currentUser.phoneNumber,
+        email: currentUser.email,
         roles: selectedRoles,
         profileCompleted: false,
         createdAt: new Date(),
       });
 
-      // Redirect to setup page
       router.replace('/setup' as any);
     } catch (error: any) {
       console.error('Role selection error:', error);
@@ -187,18 +161,11 @@ export default function AuthScreen() {
       {(Platform.OS === 'ios' || Platform.OS === 'android') && (
         <FirebaseRecaptchaVerifierModal
           ref={recaptchaVerifier}
-          firebaseConfig={{
-            apiKey: "AIzaSyDGArvbdQ8sS13iie7XxtsRR7V3brCYxRY",
-            authDomain: "polish-app-5e838.firebaseapp.com",
-            projectId: "polish-app-5e838",
-            storageBucket: "polish-app-5e838.firebasestorage.app",
-            messagingSenderId: "53750585316",
-            appId: "1:53750585316:web:5f139d556962a7e117d9f1"
-          }}
+          firebaseConfig={firebaseConfig}
           attemptInvisibleVerification={true}
         />
       )}
-      
+
       {/* reCAPTCHA container for web - hidden but required for Firebase */}
       {Platform.OS === 'web' && (
         <View
@@ -237,9 +204,10 @@ export default function AuthScreen() {
               {loading ? (
                 <ActivityIndicator color="#fff" size="small" />
               ) : (
-                <Text style={styles.buttonText}>Continue</Text>
+                <Text style={styles.buttonText}>Continue with Phone</Text>
               )}
             </TouchableOpacity>
+
             <TouchableOpacity
               style={styles.switchButton}
               onPress={() => setIsSignUp(!isSignUp)}

@@ -1,13 +1,16 @@
 import { Polish } from "@/constants/theme";
 import { useAuth } from "@/contexts/AuthContext";
+import { createCalendarEvent, getValidAccessToken } from "@/lib/googleCalendar";
+import { getThreadId } from "@/lib/threadId";
+import { formatDateTime, getUserName } from "@/lib/utils";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import {
     collection,
     doc,
-    getDoc,
     onSnapshot,
     query,
+    updateDoc,
     where,
 } from "firebase/firestore";
 import React, { useEffect, useState } from "react";
@@ -16,6 +19,7 @@ import {
     SectionList,
     StyleSheet,
     Text,
+    TouchableOpacity,
     View
 } from "react-native";
 import { db } from "../../firebase/config";
@@ -27,6 +31,7 @@ type ClientAppointment = {
   dateTime: Date;
   note?: string;
   status: string;
+  appointmentType?: string;
 };
 
 type TechAppointment = {
@@ -36,6 +41,7 @@ type TechAppointment = {
   dateTime: Date;
   note?: string;
   status: string;
+  appointmentType?: string;
 };
 
 type BookingsSection = {
@@ -44,13 +50,6 @@ type BookingsSection = {
   type: "client" | "tech";
 };
 
-function formatDateTime(dt: Date) {
-  return `${dt.toLocaleDateString(undefined, {
-    weekday: "short",
-    month: "short",
-    day: "numeric",
-  })} at ${dt.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`;
-}
 
 export default function BookingsScreen() {
   const { user, userProfile, loading: authLoading } = useAuth();
@@ -62,6 +61,41 @@ export default function BookingsScreen() {
 
   const isClient = userProfile?.roles?.includes("user") ?? false;
   const isTech = userProfile?.roles?.includes("nailTech") ?? false;
+
+  async function handleAccept(appointmentId: string, appointment: TechAppointment) {
+    // Confirm the appointment
+    await updateDoc(doc(db, "appointments", appointmentId), { status: "confirmed" });
+
+    const techName = [userProfile?.firstName, userProfile?.lastName].filter(Boolean).join(" ") || "Nail Tech";
+
+    // Create Google Calendar event for tech (if connected)
+    const techToken = await getValidAccessToken(user!.uid);
+    if (techToken) {
+      const eventId = await createCalendarEvent(techToken, appointment, techName, appointment.clientName);
+      if (eventId) {
+        updateDoc(doc(db, "appointments", appointmentId), { techCalendarEventId: eventId });
+      }
+    }
+
+    // Create Google Calendar event for client (if connected)
+    const clientToken = await getValidAccessToken(appointment.clientId);
+    if (clientToken) {
+      const eventId = await createCalendarEvent(clientToken, appointment, techName, appointment.clientName);
+      if (eventId) {
+        updateDoc(doc(db, "appointments", appointmentId), { clientCalendarEventId: eventId });
+      }
+    }
+  }
+
+  async function handleDecline(appointmentId: string) {
+    await updateDoc(doc(db, "appointments", appointmentId), { status: "declined" });
+  }
+
+  function handleMessage(clientId: string) {
+    if (!user?.uid) return;
+    const threadId = getThreadId(user.uid, clientId);
+    router.push(`/(tabs)/inbox/chat/${threadId}` as any);
+  }
 
   useEffect(() => {
     if (!user?.uid) {
@@ -98,31 +132,19 @@ export default function BookingsScreen() {
         }[];
 
         const withNames: ClientAppointment[] = await Promise.all(
-          docs.map(async (a) => {
-            let techName = `Tech`;
-            try {
-              const techSnap = await getDoc(doc(db, "users", a.techId));
-              if (techSnap.exists()) {
-                const d = techSnap.data();
-                const first = d.firstName || "";
-                const last = d.lastName || "";
-                techName =
-                  first && last ? `${first} ${last}`.trim() : first || last || techName;
-              }
-            } catch (_) {}
-            return {
-              id: a.id,
-              techId: a.techId,
-              techName,
-              dateTime: a.dateTime,
-              note: a.note,
-              status: a.status || "pending",
-            };
-          })
+          docs.map(async (a) => ({
+            id: a.id,
+            techId: a.techId,
+            techName: await getUserName(a.techId, "Tech"),
+            dateTime: a.dateTime,
+            note: a.note,
+            status: a.status || "pending",
+            appointmentType: (a as any).appointmentType,
+          }))
         );
 
         const upcoming = withNames
-          .filter((a) => a.dateTime >= now)
+          .filter((a) => a.dateTime >= now && a.status !== "declined")
           .sort((a, b) => a.dateTime.getTime() - b.dateTime.getTime());
         const past = withNames
           .filter((a) => a.dateTime < now)
@@ -151,34 +173,22 @@ export default function BookingsScreen() {
         }[];
 
         const withNames: TechAppointment[] = await Promise.all(
-          docs.map(async (a) => {
-            let clientName = "Customer";
-            try {
-              const clientSnap = await getDoc(doc(db, "users", a.clientId));
-              if (clientSnap.exists()) {
-                const d = clientSnap.data();
-                const first = d.firstName || "";
-                const last = d.lastName || "";
-                clientName =
-                  first && last ? `${first} ${last}`.trim() : first || last || clientName;
-              }
-            } catch (_) {}
-            return {
-              id: a.id,
-              clientId: a.clientId,
-              clientName,
-              dateTime: a.dateTime,
-              note: a.note,
-              status: a.status || "pending",
-            };
-          })
+          docs.map(async (a) => ({
+            id: a.id,
+            clientId: a.clientId,
+            clientName: await getUserName(a.clientId, "Customer"),
+            dateTime: a.dateTime,
+            note: a.note,
+            status: a.status || "pending",
+            appointmentType: (a as any).appointmentType,
+          }))
         );
 
         const requests = withNames
           .filter((a) => a.status === "pending")
           .sort((a, b) => a.dateTime.getTime() - b.dateTime.getTime());
         const upcoming = withNames
-          .filter((a) => a.dateTime >= now && a.status !== "pending")
+          .filter((a) => a.dateTime >= now && a.status !== "pending" && a.status !== "declined")
           .sort((a, b) => a.dateTime.getTime() - b.dateTime.getTime());
         setTechRequests(requests);
         setTechUpcoming(upcoming);
@@ -281,32 +291,72 @@ export default function BookingsScreen() {
           renderSectionHeader={({ section }) => (
             <Text style={styles.sectionTitle}>{section.title}</Text>
           )}
-          renderItem={({ item, section }) => (
-            <View style={styles.card}>
-              <Text style={styles.name}>
-                {section.type === "client"
-                  ? (item as ClientAppointment).techName
-                  : (item as TechAppointment).clientName}
-              </Text>
-              <Text style={styles.dateText}>{formatDateTime(item.dateTime)}</Text>
-              {item.note ? (
-                <Text style={styles.noteText} numberOfLines={2}>
-                  {item.note}
-                </Text>
-              ) : null}
-              <View style={styles.statusRow}>
-                <Text
-                  style={[
-                    styles.statusText,
-                    item.status === "confirmed" && styles.statusConfirmed,
-                    item.status === "pending" && styles.statusPending,
-                  ]}
-                >
-                  {item.status}
-                </Text>
+          renderItem={({ item, section }) => {
+            const isTechPending = section.type === "tech" && item.status === "pending";
+            const appt = item as TechAppointment;
+            return (
+              <View style={[styles.card, isTechPending && styles.cardPending]}>
+                <View style={styles.cardTopRow}>
+                  <Text style={styles.name}>
+                    {section.type === "client"
+                      ? (item as ClientAppointment).techName
+                      : appt.clientName}
+                  </Text>
+                  {!isTechPending && (
+                    <View style={[
+                      styles.statusBadge,
+                      item.status === "confirmed" && styles.statusBadgeConfirmed,
+                    ]}>
+                      <Text style={[
+                        styles.statusBadgeText,
+                        item.status === "confirmed" && styles.statusBadgeTextConfirmed,
+                      ]}>
+                        {item.status}
+                      </Text>
+                    </View>
+                  )}
+                </View>
+                <View style={styles.dateRow}>
+                  <Ionicons name="calendar-outline" size={14} color={Polish.colors.textMuted} />
+                  <Text style={styles.dateText}>{formatDateTime(item.dateTime)}</Text>
+                </View>
+                {item.appointmentType ? (
+                  <Text style={styles.apptTypeText}>{item.appointmentType}</Text>
+                ) : null}
+                {item.note ? (
+                  <Text style={styles.noteText} numberOfLines={2}>
+                    "{item.note}"
+                  </Text>
+                ) : null}
+                {isTechPending && (
+                  <View style={styles.actionRow}>
+                    <TouchableOpacity
+                      style={styles.acceptButton}
+                      onPress={() => handleAccept(item.id, item as TechAppointment)}
+                      activeOpacity={0.8}
+                    >
+                      <Text style={styles.acceptButtonText}>Accept</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={styles.messageButton}
+                      onPress={() => handleMessage(appt.clientId)}
+                      activeOpacity={0.8}
+                    >
+                      <Ionicons name="chatbubble-outline" size={14} color={Polish.colors.primary} />
+                      <Text style={styles.messageButtonText}>Message</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={styles.declineButton}
+                      onPress={() => handleDecline(item.id)}
+                      activeOpacity={0.8}
+                    >
+                      <Text style={styles.declineButtonText}>Decline</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
               </View>
-            </View>
-          )}
+            );
+          }}
         />
       )}
     </View>
@@ -371,10 +421,45 @@ const styles = StyleSheet.create({
     borderColor: Polish.colors.borderLight,
     ...Polish.shadowSm,
   },
+  cardPending: {
+    borderColor: Polish.colors.primary + "40",
+    borderWidth: 1.5,
+  },
+  cardTopRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 4,
+  },
   name: {
     ...Polish.typography.subtitle,
     color: Polish.colors.text,
-    marginBottom: 4,
+    flex: 1,
+    marginRight: Polish.spacing.sm,
+  },
+  statusBadge: {
+    paddingHorizontal: Polish.spacing.md,
+    paddingVertical: 3,
+    borderRadius: Polish.radius.xl,
+    backgroundColor: Polish.colors.textMuted + "20",
+  },
+  statusBadgeConfirmed: {
+    backgroundColor: Polish.colors.success + "20",
+  },
+  statusBadgeText: {
+    ...Polish.typography.caption,
+    color: Polish.colors.textMuted,
+    textTransform: "capitalize",
+    fontWeight: "600",
+  },
+  statusBadgeTextConfirmed: {
+    color: Polish.colors.success,
+  },
+  dateRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    marginBottom: 2,
   },
   dateText: {
     ...Polish.typography.body,
@@ -384,19 +469,58 @@ const styles = StyleSheet.create({
     ...Polish.typography.caption,
     color: Polish.colors.textMuted,
     marginTop: Polish.spacing.sm,
+    fontStyle: "italic",
   },
-  statusRow: {
-    marginTop: Polish.spacing.sm,
+  actionRow: {
+    flexDirection: "row",
+    gap: Polish.spacing.sm,
+    marginTop: Polish.spacing.md,
   },
-  statusText: {
+  acceptButton: {
+    flex: 1,
+    alignItems: "center",
+    paddingVertical: Polish.spacing.sm,
+    borderRadius: Polish.radius.lg,
+    backgroundColor: Polish.colors.primary,
+  },
+  acceptButtonText: {
+    ...Polish.typography.caption,
+    color: "#fff",
+    fontWeight: "600",
+  },
+  messageButton: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 4,
+    paddingVertical: Polish.spacing.sm,
+    borderRadius: Polish.radius.lg,
+    borderWidth: 1,
+    borderColor: Polish.colors.primary,
+  },
+  messageButtonText: {
+    ...Polish.typography.caption,
+    color: Polish.colors.primary,
+    fontWeight: "600",
+  },
+  declineButton: {
+    flex: 1,
+    alignItems: "center",
+    paddingVertical: Polish.spacing.sm,
+    borderRadius: Polish.radius.lg,
+    borderWidth: 1,
+    borderColor: Polish.colors.error,
+  },
+  declineButtonText: {
+    ...Polish.typography.caption,
+    color: Polish.colors.error,
+    fontWeight: "600",
+  },
+  apptTypeText: {
     ...Polish.typography.caption,
     color: Polish.colors.textSecondary,
-    textTransform: "capitalize",
-  },
-  statusConfirmed: {
-    color: Polish.colors.success,
-  },
-  statusPending: {
-    color: Polish.colors.primary,
+    fontWeight: "600",
+    marginTop: 2,
   },
 });

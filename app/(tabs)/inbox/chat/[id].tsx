@@ -1,6 +1,7 @@
 import { Polish } from "@/constants/theme";
 import { useAuth } from "@/contexts/AuthContext";
 import { db } from "@/firebase/config";
+import { getUserName } from "@/lib/utils";
 import { Ionicons } from "@expo/vector-icons";
 import { router, useLocalSearchParams } from "expo-router";
 import {
@@ -51,22 +52,13 @@ export default function ChatScreen() {
     }
 
     const threadRef = doc(db, "threads", threadId);
-    getDoc(threadRef).then((snap) => {
+    getDoc(threadRef).then(async (snap) => {
       if (snap.exists()) {
         const data = snap.data();
         const participantIds = (data.participantIds as string[]) || [];
         const otherId =
           participantIds[0] === user.uid ? participantIds[1] : participantIds[0];
-        getDoc(doc(db, "users", otherId)).then((userSnap) => {
-          if (userSnap.exists()) {
-            const o = userSnap.data();
-            const first = o.firstName || "";
-            const last = o.lastName || "";
-            setOtherName(
-              first && last ? `${first} ${last}`.trim() : first || last || "Chat"
-            );
-          }
-        });
+        setOtherName(await getUserName(otherId, "Chat"));
       }
       setLoading(false);
     });

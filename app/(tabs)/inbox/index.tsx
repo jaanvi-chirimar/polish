@@ -1,12 +1,11 @@
 import { Polish } from "@/constants/theme";
 import { useAuth } from "@/contexts/AuthContext";
 import { db } from "@/firebase/config";
+import { getUserName } from "@/lib/utils";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import {
     collection,
-    doc,
-    getDoc,
     onSnapshot,
     query,
     where,
@@ -48,29 +47,17 @@ export default function InboxListScreen() {
     const unsubscribe = onSnapshot(
       q,
       async (snapshot) => {
-        const now = new Date();
         const list: Thread[] = await Promise.all(
           snapshot.docs.map(async (d) => {
             const data = d.data();
             const participantIds = (data.participantIds as string[]) || [];
             const otherId =
               participantIds[0] === user.uid ? participantIds[1] : participantIds[0];
-            let otherName = "Unknown";
-            try {
-              const otherSnap = await getDoc(doc(db, "users", otherId));
-              if (otherSnap.exists()) {
-                const o = otherSnap.data();
-                const first = o.firstName || "";
-                const last = o.lastName || "";
-                otherName =
-                  first && last ? `${first} ${last}`.trim() : first || last || otherName;
-              }
-            } catch (_) {}
             const lastAt = data.lastMessageAt?.toDate?.() ?? null;
             return {
               id: d.id,
               otherUserId: otherId,
-              otherUserName: otherName,
+              otherUserName: await getUserName(otherId),
               lastMessage: (data.lastMessage as string) || "",
               lastMessageAt: lastAt,
             };
@@ -129,24 +116,31 @@ export default function InboxListScreen() {
               activeOpacity={0.7}
               onPress={() => router.push(`/(tabs)/inbox/chat/${item.id}` as any)}
             >
-              <Text style={styles.name}>{item.otherUserName}</Text>
-              {item.lastMessage ? (
-                <Text style={styles.preview} numberOfLines={2}>
-                  {item.lastMessage}
+              <View style={styles.avatar}>
+                <Text style={styles.avatarText}>
+                  {item.otherUserName.charAt(0).toUpperCase()}
                 </Text>
-              ) : null}
-              {item.lastMessageAt ? (
-                <Text style={styles.time}>
-                  {item.lastMessageAt.toLocaleDateString(undefined, {
-                    month: "short",
-                    day: "numeric",
-                  })}{" "}
-                  {item.lastMessageAt.toLocaleTimeString([], {
-                    hour: "numeric",
-                    minute: "2-digit",
-                  })}
-                </Text>
-              ) : null}
+              </View>
+              <View style={styles.cardBody}>
+                <View style={styles.cardTopRow}>
+                  <Text style={styles.name} numberOfLines={1}>{item.otherUserName}</Text>
+                  {item.lastMessageAt ? (
+                    <Text style={styles.time}>
+                      {item.lastMessageAt.toLocaleDateString(undefined, {
+                        month: "short",
+                        day: "numeric",
+                      })}
+                    </Text>
+                  ) : null}
+                </View>
+                {item.lastMessage ? (
+                  <Text style={styles.preview} numberOfLines={1}>
+                    {item.lastMessage}
+                  </Text>
+                ) : (
+                  <Text style={styles.previewEmpty}>No messages yet</Text>
+                )}
+              </View>
             </TouchableOpacity>
           )}
         />
@@ -200,6 +194,8 @@ const styles = StyleSheet.create({
     paddingBottom: Polish.spacing.xxxl,
   },
   card: {
+    flexDirection: "row",
+    alignItems: "center",
     backgroundColor: Polish.colors.surface,
     borderRadius: Polish.radius.lg,
     padding: Polish.spacing.lg,
@@ -208,18 +204,48 @@ const styles = StyleSheet.create({
     borderColor: Polish.colors.borderLight,
     ...Polish.shadowSm,
   },
+  avatar: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: Polish.colors.accent + "40",
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: Polish.spacing.md,
+    flexShrink: 0,
+  },
+  avatarText: {
+    ...Polish.typography.subtitle,
+    color: Polish.colors.primary,
+  },
+  cardBody: {
+    flex: 1,
+    minWidth: 0,
+  },
+  cardTopRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 2,
+  },
   name: {
     ...Polish.typography.subtitle,
     color: Polish.colors.text,
-    marginBottom: 4,
+    flex: 1,
+    marginRight: Polish.spacing.sm,
   },
   preview: {
     ...Polish.typography.body,
     color: Polish.colors.textSecondary,
-    marginBottom: 4,
+  },
+  previewEmpty: {
+    ...Polish.typography.body,
+    color: Polish.colors.textMuted,
+    fontStyle: "italic",
   },
   time: {
     ...Polish.typography.caption,
     color: Polish.colors.textMuted,
+    flexShrink: 0,
   },
 });

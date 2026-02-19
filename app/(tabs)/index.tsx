@@ -12,13 +12,12 @@ import {
 } from "@/constants/nailTechOptions";
 import { Polish } from "@/constants/theme";
 import { useAuth } from "@/contexts/AuthContext";
+import { buildFullName, formatDateTime, getUserName } from "@/lib/utils";
 import { Ionicons } from "@expo/vector-icons";
 import { Link, router } from "expo-router";
 import {
   collection,
-  doc,
   DocumentData,
-  getDoc,
   onSnapshot,
   query,
   where,
@@ -39,6 +38,7 @@ import { db } from "../../firebase/config";
 type TechStatus = {
   nextAppointment: { clientName: string; dateTime: Date } | null;
   pendingCount: number;
+  confirmedCount: number;
 };
 
 const SERVICE_FILTER_OPTIONS = [
@@ -76,6 +76,43 @@ type Tech = {
   };
 };
 
+function TechStatusCard({ techStatus }: { techStatus: TechStatus }) {
+  return (
+    <TouchableOpacity
+      style={styles.statusCard}
+      onPress={() => router.push("/(tabs)/bookings" as any)}
+      activeOpacity={0.85}
+    >
+      <Ionicons
+        name="calendar-outline"
+        size={22}
+        color={Polish.colors.primary}
+        style={styles.statusCardIcon}
+      />
+      <View style={styles.statusCardBody}>
+        {techStatus.nextAppointment ? (
+          <>
+            <Text style={styles.statusCardTitle}>Next appointment</Text>
+            <Text style={styles.statusCardText} numberOfLines={1}>
+              {techStatus.nextAppointment.clientName} ·{" "}
+              {formatDateTime(techStatus.nextAppointment.dateTime)}
+            </Text>
+          </>
+        ) : (
+          <>
+            <Text style={styles.statusCardTitle}>Pending requests</Text>
+            <Text style={styles.statusCardText}>
+              {techStatus.pendingCount} booking
+              {techStatus.pendingCount !== 1 ? "s" : ""} awaiting your response
+            </Text>
+          </>
+        )}
+      </View>
+      <Ionicons name="chevron-forward" size={20} color={Polish.colors.textMuted} />
+    </TouchableOpacity>
+  );
+}
+
 export default function HomeScreen() {
   const { user, userProfile, loading: authLoading } = useAuth();
   const [techs, setTechs] = useState<Tech[]>([]);
@@ -87,6 +124,7 @@ export default function HomeScreen() {
   const [techStatus, setTechStatus] = useState<TechStatus>({
     nextAppointment: null,
     pendingCount: 0,
+    confirmedCount: 0,
   });
 
   const isTech = userProfile?.roles?.includes("nailTech") ?? false;
@@ -96,7 +134,7 @@ export default function HomeScreen() {
   // Tech appointments: next upcoming or pending requests (for tech-only or both)
   useEffect(() => {
     if (!user?.uid || !isTech) {
-      setTechStatus({ nextAppointment: null, pendingCount: 0 });
+      setTechStatus({ nextAppointment: null, pendingCount: 0, confirmedCount: 0 });
       return;
     }
     const q = query(
@@ -126,27 +164,20 @@ export default function HomeScreen() {
         }[];
 
         const pending = docs.filter((a) => a.status === "pending");
-        const upcoming = docs
-          .filter((a) => a.dateTime >= now && a.status !== "pending")
-          .sort((a, b) => a.dateTime.getTime() - b.dateTime.getTime());
+        const confirmed = docs.filter(
+          (a) => a.dateTime >= now && a.status === "confirmed"
+        );
+        const upcoming = confirmed.sort(
+          (a, b) => a.dateTime.getTime() - b.dateTime.getTime()
+        );
         const next = upcoming[0] ?? null;
 
         let nextAppointment: TechStatus["nextAppointment"] = null;
         if (next) {
-          let clientName = "Client";
-          try {
-            const clientSnap = await getDoc(doc(db, "users", next.clientId));
-            if (clientSnap.exists()) {
-              const d = clientSnap.data();
-              const first = d.firstName || "";
-              const last = d.lastName || "";
-              clientName =
-                first && last ? `${first} ${last}`.trim() : first || last || clientName;
-            }
-          } catch (_) {}
+          const clientName = await getUserName(next.clientId, "Client");
           nextAppointment = { clientName, dateTime: next.dateTime };
         }
-        setTechStatus({ nextAppointment, pendingCount: pending.length });
+        setTechStatus({ nextAppointment, pendingCount: pending.length, confirmedCount: confirmed.length });
       },
       (err) => console.error("Home tech status:", err)
     );
@@ -188,12 +219,7 @@ export default function HomeScreen() {
         const list: Tech[] = snapshot.docs.map((doc) => {
           const data = doc.data() as DocumentData;
           
-          // Build name from firstName and lastName
-          const firstName = data.firstName || "";
-          const lastName = data.lastName || "";
-          const name = firstName && lastName 
-            ? `${firstName} ${lastName}`.trim()
-            : firstName || lastName || "Unnamed Tech";
+          const name = buildFullName(data.firstName, data.lastName, "Unnamed Tech");
           
           // Get location from nailTechProfile or user location
           const location = data.nailTechProfile?.location || data.location || "";
@@ -279,81 +305,61 @@ export default function HomeScreen() {
     );
   }
 
-  // Technician-only: no discovery; status card or neutral empty state
+  // Technician-only: dashboard
   if (isTechOnly) {
-    const hasStatus = techStatus.nextAppointment || techStatus.pendingCount > 0;
+    const hour = new Date().getHours();
+    const greeting = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
+    const firstName = userProfile?.firstName || "there";
     return (
-      <View style={styles.container}>
+      <ScrollView style={styles.container} contentContainerStyle={styles.techDashContent} showsVerticalScrollIndicator={false}>
         <View style={styles.header}>
-          <Text style={styles.title}>Home</Text>
-          <TouchableOpacity
-            onPress={handleProfilePress}
-            style={styles.profileButton}
-            activeOpacity={0.7}
-          >
-            <Ionicons
-              name="person-circle-outline"
-              size={32}
-              color={Polish.colors.text}
-            />
+          <View>
+            <Text style={styles.techGreeting}>{greeting}, {firstName} 👋</Text>
+            <Text style={styles.techGreetingSub}>Here's your overview</Text>
+          </View>
+          <TouchableOpacity onPress={handleProfilePress} style={styles.profileButton} activeOpacity={0.7}>
+            <Ionicons name="person-circle-outline" size={32} color={Polish.colors.text} />
           </TouchableOpacity>
         </View>
-        {hasStatus ? (
-          <TouchableOpacity
-            style={styles.statusCard}
-            onPress={() => router.push("/(tabs)/bookings" as any)}
-            activeOpacity={0.85}
-          >
-            <Ionicons
-              name="calendar-outline"
-              size={22}
-              color={Polish.colors.primary}
-              style={styles.statusCardIcon}
-            />
-            <View style={styles.statusCardBody}>
-              {techStatus.nextAppointment ? (
-                <>
-                  <Text style={styles.statusCardTitle}>Next appointment</Text>
-                  <Text style={styles.statusCardText} numberOfLines={1}>
-                    {techStatus.nextAppointment.clientName} ·{" "}
-                    {techStatus.nextAppointment.dateTime.toLocaleDateString(undefined, {
-                      weekday: "short",
-                      month: "short",
-                      day: "numeric",
-                    })}{" "}
-                    at{" "}
-                    {techStatus.nextAppointment.dateTime.toLocaleTimeString([], {
-                      hour: "numeric",
-                      minute: "2-digit",
-                    })}
-                  </Text>
-                </>
-              ) : (
-                <>
-                  <Text style={styles.statusCardTitle}>Pending requests</Text>
-                  <Text style={styles.statusCardText}>
-                    {techStatus.pendingCount} booking
-                    {techStatus.pendingCount !== 1 ? "s" : ""} awaiting your response
-                  </Text>
-                </>
-              )}
-            </View>
-            <Ionicons name="chevron-forward" size={20} color={Polish.colors.textMuted} />
+
+        <View style={styles.statsRow}>
+          <TouchableOpacity style={styles.statCard} onPress={() => router.push("/(tabs)/bookings" as any)} activeOpacity={0.85}>
+            <Text style={styles.statNumber}>{techStatus.pendingCount}</Text>
+            <Text style={styles.statLabel}>Pending{"\n"}Requests</Text>
+            <Ionicons name="time-outline" size={18} color={Polish.colors.primary} style={styles.statIcon} />
           </TouchableOpacity>
+          <TouchableOpacity style={styles.statCard} onPress={() => router.push("/(tabs)/bookings" as any)} activeOpacity={0.85}>
+            <Text style={styles.statNumber}>{techStatus.confirmedCount}</Text>
+            <Text style={styles.statLabel}>Upcoming{"\n"}Confirmed</Text>
+            <Ionicons name="checkmark-circle-outline" size={18} color={Polish.colors.success} style={styles.statIcon} />
+          </TouchableOpacity>
+        </View>
+
+        {techStatus.nextAppointment ? (
+          <TechStatusCard techStatus={techStatus} />
         ) : (
-          <View style={styles.techOnlyEmpty}>
-            <Ionicons
-              name="checkmark-circle-outline"
-              size={56}
-              color={Polish.colors.textMuted}
-            />
-            <Text style={styles.techOnlyEmptyTitle}>You're all set for today</Text>
-            <Text style={styles.techOnlyEmptyText}>
-              Check Bookings for appointments and Inbox for messages.
-            </Text>
+          <View style={styles.techAllSetCard}>
+            <Ionicons name="checkmark-circle-outline" size={24} color={Polish.colors.success} />
+            <Text style={styles.techAllSetText}>No upcoming appointments — you're all clear!</Text>
           </View>
         )}
-      </View>
+
+        <Text style={styles.quickActionsLabel}>Quick Actions</Text>
+        <View style={styles.quickActionsRow}>
+          <TouchableOpacity style={styles.quickAction} onPress={() => router.push("/(tabs)/bookings" as any)} activeOpacity={0.85}>
+            <Ionicons name="calendar-outline" size={22} color={Polish.colors.primary} />
+            <Text style={styles.quickActionText}>Bookings</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.quickAction} onPress={() => router.push("/(tabs)/inbox" as any)} activeOpacity={0.85}>
+            <Ionicons name="mail-outline" size={22} color={Polish.colors.primary} />
+            <Text style={styles.quickActionText}>Messages</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.quickAction} onPress={handleProfilePress} activeOpacity={0.85}>
+            <Ionicons name="person-outline" size={22} color={Polish.colors.primary} />
+            <Text style={styles.quickActionText}>My Profile</Text>
+          </TouchableOpacity>
+        </View>
+      </ScrollView>
     );
   }
 
@@ -502,47 +508,7 @@ export default function HomeScreen() {
 
       {/* Tech status card (when user is both customer and tech); links to Bookings */}
       {isTech && (techStatus.nextAppointment || techStatus.pendingCount > 0) && (
-        <TouchableOpacity
-          style={styles.statusCard}
-          onPress={() => router.push("/(tabs)/bookings" as any)}
-          activeOpacity={0.85}
-        >
-          <Ionicons
-            name="calendar-outline"
-            size={22}
-            color={Polish.colors.primary}
-            style={styles.statusCardIcon}
-          />
-          <View style={styles.statusCardBody}>
-            {techStatus.nextAppointment ? (
-              <>
-                <Text style={styles.statusCardTitle}>Next appointment</Text>
-                <Text style={styles.statusCardText} numberOfLines={1}>
-                  {techStatus.nextAppointment.clientName} ·{" "}
-                  {techStatus.nextAppointment.dateTime.toLocaleDateString(undefined, {
-                    weekday: "short",
-                    month: "short",
-                    day: "numeric",
-                  })}{" "}
-                  at{" "}
-                  {techStatus.nextAppointment.dateTime.toLocaleTimeString([], {
-                    hour: "numeric",
-                    minute: "2-digit",
-                  })}
-                </Text>
-              </>
-            ) : techStatus.pendingCount > 0 ? (
-              <>
-                <Text style={styles.statusCardTitle}>Pending requests</Text>
-                <Text style={styles.statusCardText}>
-                  {techStatus.pendingCount} booking
-                  {techStatus.pendingCount !== 1 ? "s" : ""} awaiting your response
-                </Text>
-              </>
-            ) : null}
-          </View>
-          <Ionicons name="chevron-forward" size={20} color={Polish.colors.textMuted} />
-        </TouchableOpacity>
+        <TechStatusCard techStatus={techStatus} />
       )}
 
       {/* Optional: inspiration / browse by style */}
@@ -899,5 +865,92 @@ const styles = StyleSheet.create({
     color: Polish.colors.textSecondary,
     textAlign: "center",
     paddingHorizontal: Polish.spacing.xxl,
+  },
+  techDashContent: {
+    paddingHorizontal: Polish.spacing.xl,
+    paddingTop: 56,
+    paddingBottom: Polish.spacing.xxxl,
+  },
+  techGreeting: {
+    ...Polish.typography.title,
+    color: Polish.colors.text,
+  },
+  techGreetingSub: {
+    ...Polish.typography.caption,
+    color: Polish.colors.textSecondary,
+    marginTop: 2,
+  },
+  statsRow: {
+    flexDirection: "row",
+    gap: Polish.spacing.md,
+    marginBottom: Polish.spacing.lg,
+  },
+  statCard: {
+    flex: 1,
+    backgroundColor: Polish.colors.surface,
+    borderRadius: Polish.radius.lg,
+    padding: Polish.spacing.lg,
+    borderWidth: 1,
+    borderColor: Polish.colors.borderLight,
+    ...Polish.shadowSm,
+  },
+  statNumber: {
+    ...Polish.typography.title,
+    color: Polish.colors.text,
+    fontSize: 32,
+    lineHeight: 36,
+  },
+  statLabel: {
+    ...Polish.typography.caption,
+    color: Polish.colors.textSecondary,
+    marginTop: Polish.spacing.xs,
+  },
+  statIcon: {
+    position: "absolute",
+    top: Polish.spacing.md,
+    right: Polish.spacing.md,
+  },
+  techAllSetCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Polish.spacing.md,
+    backgroundColor: Polish.colors.surface,
+    borderRadius: Polish.radius.lg,
+    padding: Polish.spacing.lg,
+    marginBottom: Polish.spacing.lg,
+    borderWidth: 1,
+    borderColor: Polish.colors.borderLight,
+  },
+  techAllSetText: {
+    ...Polish.typography.body,
+    color: Polish.colors.textSecondary,
+    flex: 1,
+  },
+  quickActionsLabel: {
+    ...Polish.typography.caption,
+    color: Polish.colors.textMuted,
+    marginBottom: Polish.spacing.sm,
+    marginTop: Polish.spacing.sm,
+  },
+  quickActionsRow: {
+    flexDirection: "row",
+    gap: Polish.spacing.md,
+  },
+  quickAction: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: Polish.spacing.sm,
+    backgroundColor: Polish.colors.surface,
+    borderRadius: Polish.radius.lg,
+    paddingVertical: Polish.spacing.lg,
+    borderWidth: 1,
+    borderColor: Polish.colors.borderLight,
+    ...Polish.shadowSm,
+  },
+  quickActionText: {
+    ...Polish.typography.caption,
+    color: Polish.colors.text,
+    fontWeight: "600",
   },
 });

@@ -5,21 +5,40 @@ import React, { createContext, useContext, useEffect, useState } from 'react';
 
 export type UserType = 'user' | 'nailTech';
 
+export interface PricingTier {
+  name: string;
+  description?: string;
+  price: number;
+  enabled: boolean;
+}
+
 export interface NailTechProfile {
-  portfolio?: string[]; // Array of image URLs
+  portfolio?: string[];
   availabilities?: {
-    days: string[]; // e.g., ['monday', 'tuesday']
-    timeRanges?: { start: string; end: string }[]; // e.g., [{ start: '09:00', end: '17:00' }]
+    days: string[];
+    timeRanges?: { start: string; end: string }[];
   };
-  tools?: string[]; // Tools they have
-  designs?: string[]; // Designs they can do
+  tools?: string[];
+  designs?: string[];
   bio?: string;
   location?: string;
+  pricingTiers?: {
+    tier1?: PricingTier;
+    tier2?: PricingTier;
+    tier3?: PricingTier;
+  };
+  policies?: {
+    reschedule?: string;
+    late?: string;
+  };
+  paymentMethods?: string[];
+  maxAppointmentsPerWeek?: number;
 }
 
 export interface UserProfile {
   uid: string;
   phoneNumber: string | null;
+  email?: string | null;
   roles: UserType[]; // Array to support dual roles
   firstName?: string;
   lastName?: string;
@@ -27,6 +46,11 @@ export interface UserProfile {
   preferences?: string | string[]; // User preferences (string for legacy, array for multiselect)
   location?: string; // User location (optional)
   nailTechProfile?: NailTechProfile; // Only if they have nailTech role
+  googleCalendar?: {
+    accessToken: string;
+    refreshToken: string;
+    expiresAt: number;
+  };
   createdAt?: Date;
 }
 

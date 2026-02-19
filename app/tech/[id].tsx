@@ -2,17 +2,18 @@ import { Polish } from "@/constants/theme";
 import { useAuth } from "@/contexts/AuthContext";
 import { db } from "@/firebase/config";
 import { getThreadId } from "@/lib/threadId";
+import { buildFullName } from "@/lib/utils";
 import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { doc, getDocFromServer } from "firebase/firestore";
-import React, { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import {
-    ActivityIndicator,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -36,6 +37,13 @@ export default function TechProfile() {
       tools?: string[];
       designs?: string[];
       availabilities?: { days: string[] };
+      pricingTiers?: {
+        tier1?: { name: string; description?: string; price: number; enabled: boolean };
+        tier2?: { name: string; description?: string; price: number; enabled: boolean };
+        tier3?: { name: string; description?: string; price: number; enabled: boolean };
+      };
+      policies?: { reschedule?: string; late?: string };
+      paymentMethods?: string[];
     };
   } | null>(null);
   const [loading, setLoading] = useState(false);
@@ -61,11 +69,7 @@ export default function TechProfile() {
             setError("User is not a nail tech");
             return;
           }
-          const firstName = data.firstName || "";
-          const lastName = data.lastName || "";
-          const techName = firstName && lastName
-            ? `${firstName} ${lastName}`.trim()
-            : firstName || lastName || "Unnamed Tech";
+          const techName = buildFullName(data.firstName, data.lastName, "Unnamed Tech");
           setTech({
             id: snap.id,
             name: techName,
@@ -200,6 +204,68 @@ export default function TechProfile() {
               </View>
             ) : null}
           </View>
+
+          {/* Pricing */}
+          {(() => {
+            const tiers = tech?.nailTechProfile?.pricingTiers;
+            const tierEntries = [
+              { key: 'tier1', label: 'Tier 1 — Solid Color', tier: tiers?.tier1 },
+              { key: 'tier2', label: 'Tier 2 — Minimal', tier: tiers?.tier2 },
+              { key: 'tier3', label: 'Tier 3 — Full Design', tier: tiers?.tier3 },
+            ].filter(e => e.tier?.enabled);
+            if (!tierEntries.length) return null;
+            return (
+              <View style={styles.section}>
+                <Text style={styles.label}>Pricing Tiers</Text>
+                {tierEntries.map(({ key, label, tier }) => (
+                  <View key={key} style={styles.pricingRow}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.pricingTierName}>{label}</Text>
+                      {tier!.description ? (
+                        <Text style={styles.mutedText}>{tier!.description}</Text>
+                      ) : null}
+                    </View>
+                    {tier!.price > 0 ? (
+                      <Text style={styles.pricingAmount}>${tier!.price}</Text>
+                    ) : null}
+                  </View>
+                ))}
+              </View>
+            );
+          })()}
+
+          {/* Payment Methods */}
+          {tech?.nailTechProfile?.paymentMethods?.length ? (
+            <View style={styles.section}>
+              <Text style={styles.label}>Accepted Payment</Text>
+              <View style={styles.dayChips}>
+                {tech.nailTechProfile.paymentMethods.map((m) => (
+                  <View key={m} style={styles.dayChip}>
+                    <Text style={styles.dayChipText}>{m}</Text>
+                  </View>
+                ))}
+              </View>
+            </View>
+          ) : null}
+
+          {/* Policies */}
+          {(tech?.nailTechProfile?.policies?.reschedule || tech?.nailTechProfile?.policies?.late) ? (
+            <View style={styles.section}>
+              <Text style={styles.label}>Policies</Text>
+              {tech.nailTechProfile!.policies!.reschedule ? (
+                <View style={styles.policyBlock}>
+                  <Text style={styles.policyLabel}>Reschedule</Text>
+                  <Text style={styles.bodyText}>{tech.nailTechProfile!.policies!.reschedule}</Text>
+                </View>
+              ) : null}
+              {tech.nailTechProfile!.policies!.late ? (
+                <View style={styles.policyBlock}>
+                  <Text style={styles.policyLabel}>Late</Text>
+                  <Text style={styles.bodyText}>{tech.nailTechProfile!.policies!.late}</Text>
+                </View>
+              ) : null}
+            </View>
+          ) : null}
 
           <View style={styles.buttonRow}>
             <TouchableOpacity
@@ -369,4 +435,32 @@ const styles = StyleSheet.create({
     color: "#fff",
   },
   buttonTextSecondary: { color: Polish.colors.primary },
+  pricingRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    paddingVertical: Polish.spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: Polish.colors.borderLight,
+  },
+  pricingTierName: {
+    ...Polish.typography.bodyMedium,
+    color: Polish.colors.text,
+    marginBottom: 2,
+  },
+  pricingAmount: {
+    ...Polish.typography.bodyMedium,
+    color: Polish.colors.primary,
+    fontWeight: "700",
+  },
+  policyBlock: {
+    marginBottom: Polish.spacing.md,
+  },
+  policyLabel: {
+    ...Polish.typography.caption,
+    color: Polish.colors.textMuted,
+    fontWeight: "600",
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+    marginBottom: 4,
+  },
 });
