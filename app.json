@@ -9,6 +9,11 @@
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
+      "infoPlist": {
+  "CFBundleURLTypes": [
+    { "CFBundleURLSchemes": ["com.googleusercontent.apps.53750585316-moibdr3spps4fk1ml71tqd9uvjcij3ge"] }
+  ]
+},
       "supportsTablet": true,
       "bundleIdentifier": "com.jaanvi.polish",
       "googleServicesFile": "./GoogleService-Info.plist"

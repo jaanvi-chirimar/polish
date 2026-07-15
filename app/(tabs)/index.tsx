@@ -14,6 +14,7 @@ import { Polish } from "@/constants/theme";
 import { useAuth } from "@/contexts/AuthContext";
 import { buildFullName, formatDateTime, getUserName } from "@/lib/utils";
 import { Ionicons } from "@expo/vector-icons";
+import { Image } from "expo-image";
 import { Link, router } from "expo-router";
 import {
   collection,
@@ -71,7 +72,7 @@ type Tech = {
     tools?: string[];
     designs?: string[];
     availabilities?: {
-      days: string[];
+      schedule: Record<string, Array<{ start: string; end: string }>>;
     };
   };
 };
@@ -121,6 +122,7 @@ export default function HomeScreen() {
   const [filtersVisible, setFiltersVisible] = useState(false);
   const [filterLocation, setFilterLocation] = useState<string>("");
   const [filterService, setFilterService] = useState<string>("All");
+  const [filterAvailableToday, setFilterAvailableToday] = useState(false);
   const [techStatus, setTechStatus] = useState<TechStatus>({
     nextAppointment: null,
     pendingCount: 0,
@@ -184,19 +186,10 @@ export default function HomeScreen() {
     return () => unsubscribe();
   }, [user?.uid, isTech]);
 
-  // Redirect if not authenticated - force redirect
-  // Must have phone number (no anonymous users)
+  // Redirect if not authenticated
   useEffect(() => {
-    if (!authLoading) {
-      if (!user || !user.phoneNumber) {
-        console.log('🚫 HomeScreen: No user or no phone - redirecting to /auth', {
-          hasUser: !!user,
-          hasPhone: !!user?.phoneNumber
-        });
-        router.replace('/auth' as any);
-      } else {
-        console.log('✅ HomeScreen: User authenticated with phone');
-      }
+    if (!authLoading && !user) {
+      router.replace('/auth' as any);
     }
   }, [user, authLoading]);
   
@@ -252,6 +245,8 @@ export default function HomeScreen() {
     return unsubscribe;
   }, [user, isCustomer]);
 
+  const todayWeekday = WEEKDAYS[new Date().getDay()];
+
   const filteredTechs = useMemo(() => {
     let list = techs;
     const q = searchQuery.trim().toLowerCase();
@@ -272,10 +267,13 @@ export default function HomeScreen() {
         return tools.includes(filterService) || designs.includes(filterService);
       });
     }
+    if (filterAvailableToday) {
+      list = list.filter((t) =>
+        Object.keys(t.nailTechProfile?.availabilities?.schedule ?? {}).includes(todayWeekday)
+      );
+    }
     return list;
-  }, [techs, searchQuery, filterLocation, filterService]);
-
-  const todayWeekday = WEEKDAYS[new Date().getDay()];
+  }, [techs, searchQuery, filterLocation, filterService, filterAvailableToday]);
 
   const handleProfilePress = () => {
     router.push("/(tabs)/profile" as any);
@@ -375,8 +373,10 @@ export default function HomeScreen() {
     );
   }
 
-  return (
-    <View style={styles.container}>
+  const hasActiveFilters = !!(filterLocation || filterService !== "All" || filterAvailableToday);
+
+  const listHeader = (
+    <>
       <View style={styles.header}>
         <Text style={styles.title}>Nail Techs Near You</Text>
         <TouchableOpacity
@@ -417,19 +417,19 @@ export default function HomeScreen() {
           </TouchableOpacity>
         ) : null}
         <TouchableOpacity
-          style={[styles.filtersToggle, (filterLocation || filterService !== "All") && styles.filtersToggleActive]}
+          style={[styles.filtersToggle, hasActiveFilters && styles.filtersToggleActive]}
           onPress={() => setFiltersVisible(!filtersVisible)}
           activeOpacity={0.8}
         >
           <Ionicons
             name="options-outline"
             size={20}
-            color={(filterLocation || filterService !== "All") ? "#fff" : Polish.colors.textSecondary}
+            color={hasActiveFilters ? "#fff" : Polish.colors.textSecondary}
           />
           <Text
             style={[
               styles.filtersToggleText,
-              (filterLocation || filterService !== "All") && styles.filtersToggleTextActive,
+              hasActiveFilters && styles.filtersToggleTextActive,
             ]}
           >
             Filters
@@ -438,72 +438,73 @@ export default function HomeScreen() {
       </View>
 
       {filtersVisible && (
-        <>
+        <View style={styles.filterPanel}>
+          <Text style={styles.filterLabel}>Availability</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterScroll}>
+            <TouchableOpacity
+              style={[styles.filterChip, filterAvailableToday && styles.filterChipActive]}
+              onPress={() => setFilterAvailableToday(!filterAvailableToday)}
+              activeOpacity={0.8}
+            >
+              <Text style={[styles.filterChipText, filterAvailableToday && styles.filterChipTextActive]}>
+                Available today
+              </Text>
+            </TouchableOpacity>
+          </ScrollView>
+
           <Text style={styles.filterLabel}>Location</Text>
-          <View style={styles.filterRow}>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterScroll}>
             <TouchableOpacity
               style={[styles.filterChip, !filterLocation && styles.filterChipActive]}
               onPress={() => setFilterLocation("")}
               activeOpacity={0.8}
             >
-              <Text
-                style={[
-                  styles.filterChipText,
-                  !filterLocation && styles.filterChipTextActive,
-                ]}
-              >
-                All
-              </Text>
+              <Text style={[styles.filterChipText, !filterLocation && styles.filterChipTextActive]}>All</Text>
             </TouchableOpacity>
             {(LOCATION_OPTIONS as readonly string[]).map((loc) => (
               <TouchableOpacity
                 key={loc}
-                style={[
-                  styles.filterChip,
-                  filterLocation === loc && styles.filterChipActive,
-                ]}
-                onPress={() =>
-                  setFilterLocation(filterLocation === loc ? "" : loc)
-                }
+                style={[styles.filterChip, filterLocation === loc && styles.filterChipActive]}
+                onPress={() => setFilterLocation(filterLocation === loc ? "" : loc)}
                 activeOpacity={0.8}
               >
-                <Text
-                  style={[
-                    styles.filterChipText,
-                    filterLocation === loc && styles.filterChipTextActive,
-                  ]}
-                >
+                <Text style={[styles.filterChipText, filterLocation === loc && styles.filterChipTextActive]}>
                   {loc}
                 </Text>
               </TouchableOpacity>
             ))}
-          </View>
+          </ScrollView>
 
           <Text style={styles.filterLabel}>Service</Text>
-          <View style={styles.filterRow}>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterScroll}>
             {(SERVICE_FILTER_OPTIONS as readonly string[]).map((svc) => (
               <TouchableOpacity
                 key={svc}
-                style={[
-                  styles.filterChip,
-                  filterService === svc && styles.filterChipActive,
-                ]}
+                style={[styles.filterChip, filterService === svc && styles.filterChipActive]}
                 onPress={() => setFilterService(svc)}
                 activeOpacity={0.8}
               >
-                <Text
-                  style={[
-                    styles.filterChipText,
-                    filterService === svc && styles.filterChipTextActive,
-                  ]}
-                  numberOfLines={1}
-                >
+                <Text style={[styles.filterChipText, filterService === svc && styles.filterChipTextActive]}>
                   {svc}
                 </Text>
               </TouchableOpacity>
             ))}
-          </View>
-        </>
+          </ScrollView>
+
+          {hasActiveFilters && (
+            <TouchableOpacity
+              style={styles.clearFiltersBtn}
+              onPress={() => {
+                setFilterLocation("");
+                setFilterService("All");
+                setFilterAvailableToday(false);
+              }}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.clearFiltersBtnText}>Clear all filters</Text>
+            </TouchableOpacity>
+          )}
+        </View>
       )}
 
       {/* Tech status card (when user is both customer and tech); links to Bookings */}
@@ -511,7 +512,7 @@ export default function HomeScreen() {
         <TechStatusCard techStatus={techStatus} />
       )}
 
-      {/* Optional: inspiration / browse by style */}
+      {/* Browse by style */}
       <View style={styles.inspirationRow}>
         <Text style={styles.inspirationLabel}>Browse by style</Text>
         <ScrollView
@@ -526,10 +527,7 @@ export default function HomeScreen() {
                 styles.inspirationChip,
                 filterService === design && styles.inspirationChipActive,
               ]}
-              onPress={() => {
-                setFilterService(filterService === design ? "All" : design);
-                if (!filtersVisible) setFiltersVisible(true);
-              }}
+              onPress={() => setFilterService(filterService === design ? "All" : design)}
               activeOpacity={0.8}
             >
               <Text
@@ -545,51 +543,55 @@ export default function HomeScreen() {
           ))}
         </ScrollView>
       </View>
+    </>
+  );
 
-      {filteredTechs.length === 0 ? (
-        <View style={styles.emptyFiltered}>
-          <Text style={styles.emptyText}>
-            No techs match your search or filters. Try changing them.
-          </Text>
-        </View>
-      ) : (
-        <FlatList
-          data={filteredTechs}
-          keyExtractor={(item) => item.id}
-          numColumns={2}
-          columnWrapperStyle={styles.cardRow}
-          contentContainerStyle={styles.listContent}
-          renderItem={({ item }) => {
-            const availableToday =
-              item.nailTechProfile?.availabilities?.days?.includes(
-                todayWeekday
-              ) ?? false;
-            return (
-              <Link
-                href={{
-                  pathname: "/tech/[id]",
-                  params: { id: item.id },
-                } as any}
-                asChild
-              >
-                <TouchableOpacity style={styles.card} activeOpacity={0.85}>
-                  <View style={styles.cardAvatar}>
-                    <Ionicons
-                      name="person"
-                      size={28}
-                      color={Polish.colors.primary}
-                    />
+  return (
+    <View style={styles.container}>
+      <FlatList
+        data={filteredTechs}
+        keyExtractor={(item) => item.id}
+        numColumns={2}
+        columnWrapperStyle={filteredTechs.length > 0 ? styles.cardRow : undefined}
+        contentContainerStyle={styles.listContent}
+        ListHeaderComponent={listHeader}
+        ListEmptyComponent={
+          <View style={styles.emptyFiltered}>
+            <Text style={styles.emptyText}>
+              No techs match your search or filters.{hasActiveFilters ? " Try clearing some filters." : ""}
+            </Text>
+          </View>
+        }
+        renderItem={({ item }) => {
+          const availableToday =
+            Object.keys(item.nailTechProfile?.availabilities?.schedule ?? {}).includes(todayWeekday);
+          return (
+            <Link
+              href={{
+                pathname: "/tech/[id]",
+                params: { id: item.id },
+              } as any}
+              asChild
+            >
+              <TouchableOpacity style={styles.card} activeOpacity={0.85}>
+                {item.nailTechProfile?.portfolio?.[0] ? (
+                  <Image
+                    source={{ uri: item.nailTechProfile.portfolio[0] }}
+                    style={styles.cardImage}
+                    contentFit="cover"
+                  />
+                ) : (
+                  <View style={styles.cardImagePlaceholder}>
+                    <Ionicons name="person" size={28} color={Polish.colors.primary} />
                   </View>
-                  <Text style={styles.cardName} numberOfLines={2}>
+                )}
+                <View style={styles.cardBody}>
+                  <Text style={styles.cardName} numberOfLines={1}>
                     {item.name}
                   </Text>
                   {item.location ? (
                     <View style={styles.cardLocation}>
-                      <Ionicons
-                        name="location-outline"
-                        size={12}
-                        color={Polish.colors.textMuted}
-                      />
+                      <Ionicons name="location-outline" size={12} color={Polish.colors.textMuted} />
                       <Text style={styles.cardLocationText} numberOfLines={1}>
                         {item.location}
                       </Text>
@@ -600,12 +602,12 @@ export default function HomeScreen() {
                       <Text style={styles.cardBadgeText}>Available today</Text>
                     </View>
                   ) : null}
-                </TouchableOpacity>
-              </Link>
-            );
-          }}
-        />
-      )}
+                </View>
+              </TouchableOpacity>
+            </Link>
+          );
+        }}
+      />
     </View>
   );
 }
@@ -764,11 +766,35 @@ const styles = StyleSheet.create({
   inspirationChipTextActive: {
     color: "#fff",
   },
+  filterPanel: {
+    marginBottom: Polish.spacing.md,
+  },
+  filterScroll: {
+    flexDirection: "row",
+    gap: Polish.spacing.sm,
+    paddingBottom: Polish.spacing.md,
+    paddingRight: Polish.spacing.xl,
+  },
   filterRow: {
     flexDirection: "row",
     flexWrap: "wrap",
     gap: Polish.spacing.sm,
     marginBottom: Polish.spacing.lg,
+  },
+  clearFiltersBtn: {
+    alignSelf: "flex-start",
+    marginTop: Polish.spacing.xs,
+    marginBottom: Polish.spacing.sm,
+    paddingHorizontal: Polish.spacing.md,
+    paddingVertical: Polish.spacing.sm,
+    borderRadius: Polish.radius.xl,
+    borderWidth: 1,
+    borderColor: Polish.colors.primary,
+  },
+  clearFiltersBtnText: {
+    ...Polish.typography.caption,
+    color: Polish.colors.primary,
+    fontWeight: "600",
   },
   filterChip: {
     paddingHorizontal: Polish.spacing.md,
@@ -805,29 +831,30 @@ const styles = StyleSheet.create({
   },
   card: {
     flex: 1,
-    alignItems: "center",
-    padding: Polish.spacing.lg,
-    paddingTop: Polish.spacing.xxl,
-    paddingBottom: Polish.spacing.lg,
     borderRadius: Polish.radius.lg,
     backgroundColor: Polish.colors.surface,
     borderWidth: 1,
     borderColor: Polish.colors.borderLight,
+    overflow: "hidden",
     ...Polish.shadowSm,
   },
-  cardAvatar: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
+  cardImage: {
+    width: "100%",
+    height: 140,
+  },
+  cardImagePlaceholder: {
+    width: "100%",
+    height: 140,
     backgroundColor: Polish.colors.accent + "40",
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: Polish.spacing.md,
+  },
+  cardBody: {
+    padding: Polish.spacing.md,
   },
   cardName: {
-    ...Polish.typography.subtitle,
+    ...Polish.typography.bodyMedium,
     color: Polish.colors.text,
-    textAlign: "center",
     marginBottom: Polish.spacing.xs,
   },
   cardLocation: {

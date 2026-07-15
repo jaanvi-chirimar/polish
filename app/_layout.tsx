@@ -39,13 +39,8 @@ function RootLayoutNav() {
       loading 
     });
 
-    // PRIORITY 1: If no user OR user without phone number, MUST go to auth
-    // (Phone auth is required - no anonymous users allowed)
-    if (!user || !user.phoneNumber) {
-      console.log('❌ No user or no phone number - redirecting to /auth', {
-        hasUser: !!user,
-        hasPhone: !!user?.phoneNumber
-      });
+    // PRIORITY 1: If no user, MUST go to auth
+    if (!user) {
       if (!inAuthGroup) {
         router.replace('/auth' as any);
       }

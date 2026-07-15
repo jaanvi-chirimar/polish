@@ -2,26 +2,50 @@ import { Polish } from "@/constants/theme";
 import { useAuth } from "@/contexts/AuthContext";
 import { db } from "@/firebase/config";
 import { getThreadId } from "@/lib/threadId";
-import { buildFullName } from "@/lib/utils";
+import { buildFullName, getUserName } from "@/lib/utils";
 import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { doc, getDocFromServer } from "firebase/firestore";
+import { collection, doc, getDocs, getDocFromServer, query, where } from "firebase/firestore";
 import { useEffect, useState } from "react";
+import { Image } from "expo-image";
 import {
   ActivityIndicator,
+  Dimensions,
   ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from "react-native";
+
+const SCREEN_WIDTH = Dimensions.get("window").width;
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+
+function Stars({ rating, size = 14 }: { rating: number; size?: number }) {
+  return (
+    <View style={{ flexDirection: "row", gap: 2 }}>
+      {[1, 2, 3, 4, 5].map((i) => (
+        <Ionicons
+          key={i}
+          name={i <= Math.round(rating) ? "star" : "star-outline"}
+          size={size}
+          color="#F5A623"
+        />
+      ))}
+    </View>
+  );
+}
 
 export default function TechProfile() {
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
   const { id, name } = useLocalSearchParams<{ id?: string; name?: string }>();
   const router = useRouter();
+
+  const [techReviews, setTechReviews] = useState<
+    Array<{ id: string; clientName: string; rating: number; comment: string; createdAt: Date }>
+  >([]);
+  const [avgRating, setAvgRating] = useState<number | null>(null);
 
   const [tech, setTech] = useState<{
     id: string;
@@ -36,7 +60,7 @@ export default function TechProfile() {
       portfolio?: string[];
       tools?: string[];
       designs?: string[];
-      availabilities?: { days: string[] };
+      availabilities?: { schedule: Record<string, Array<{ start: string; end: string }>> };
       pricingTiers?: {
         tier1?: { name: string; description?: string; price: number; enabled: boolean };
         tier2?: { name: string; description?: string; price: number; enabled: boolean };
@@ -79,6 +103,34 @@ export default function TechProfile() {
             location: data.nailTechProfile?.location || data.location,
             nailTechProfile: data.nailTechProfile,
           });
+
+          // Load reviews
+          const reviewsSnap = await getDocs(
+            query(collection(db, "reviews"), where("techId", "==", id))
+          );
+          if (!mounted) return;
+          const sorted = reviewsSnap.docs.sort((a, b) => {
+            const at = a.data().createdAt?.toDate?.()?.getTime() ?? 0;
+            const bt = b.data().createdAt?.toDate?.()?.getTime() ?? 0;
+            return bt - at;
+          });
+          const reviewsList = await Promise.all(
+            sorted.slice(0, 10).map(async (d) => {
+              const rd = d.data();
+              return {
+                id: d.id,
+                clientName: await getUserName(rd.clientId, "Client"),
+                rating: rd.rating as number,
+                comment: (rd.comment as string) || "",
+                createdAt: rd.createdAt?.toDate?.() ?? new Date(),
+              };
+            })
+          );
+          if (!mounted) return;
+          setTechReviews(reviewsList);
+          if (reviewsList.length > 0) {
+            setAvgRating(reviewsList.reduce((s, r) => s + r.rating, 0) / reviewsList.length);
+          }
         } else {
           setError("Tech not found");
         }
@@ -156,11 +208,32 @@ export default function TechProfile() {
           showsVerticalScrollIndicator={false}
         >
           <View style={styles.hero}>
-            <View style={styles.avatar}>
-              <Ionicons name="person" size={40} color={Polish.colors.primary} />
-            </View>
             <Text style={styles.title}>{techName}</Text>
+            {avgRating !== null && (
+              <View style={styles.ratingRow}>
+                <Stars rating={avgRating} size={16} />
+                <Text style={styles.ratingText}>
+                  {avgRating.toFixed(1)} ({techReviews.length} review{techReviews.length !== 1 ? "s" : ""})
+                </Text>
+              </View>
+            )}
           </View>
+
+          {tech?.nailTechProfile?.portfolio && tech.nailTechProfile.portfolio.length > 0 && (
+            <View style={styles.portfolioSection}>
+              <Text style={styles.label}>Portfolio</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.portfolioScroll}>
+                {tech.nailTechProfile.portfolio.map((url, idx) => (
+                  <Image
+                    key={idx}
+                    source={{ uri: url }}
+                    style={[styles.portfolioPhoto, { width: SCREEN_WIDTH * 0.55 }]}
+                    contentFit="cover"
+                  />
+                ))}
+              </ScrollView>
+            </View>
+          )}
 
           <View style={styles.section}>
             {tech?.location ? (
@@ -191,18 +264,28 @@ export default function TechProfile() {
                 <Text style={styles.mutedText}>Not specified</Text>
               )}
             </View>
-            {tech?.nailTechProfile?.availabilities?.days?.length ? (
-              <View style={styles.availRow}>
-                <Text style={styles.label}>Available</Text>
-                <View style={styles.dayChips}>
-                  {tech.nailTechProfile.availabilities.days.map((day) => (
-                    <View key={day} style={styles.dayChip}>
-                      <Text style={styles.dayChipText}>{day.slice(0, 3)}</Text>
-                    </View>
-                  ))}
+            {(() => {
+              const schedule = tech?.nailTechProfile?.availabilities?.schedule;
+              if (!schedule || Object.keys(schedule).length === 0) return null;
+              const summary = Object.entries(schedule).map(([day, blocks]) => {
+                const times = blocks.map(b => {
+                  const fmt = (hhmm: string) => {
+                    const [h, m] = hhmm.split(':').map(Number);
+                    const period = h >= 12 ? 'PM' : 'AM';
+                    const hour = h === 0 ? 12 : h > 12 ? h - 12 : h;
+                    return m === 0 ? `${hour} ${period}` : `${hour}:${m.toString().padStart(2,'0')} ${period}`;
+                  };
+                  return `${fmt(b.start)}–${fmt(b.end)}`;
+                }).join(', ');
+                return `${day.slice(0, 3)} ${times}`;
+              }).join(' · ');
+              return (
+                <View style={styles.availRow}>
+                  <Text style={styles.label}>Available</Text>
+                  <Text style={styles.bodyText}>{summary}</Text>
                 </View>
-              </View>
-            ) : null}
+              );
+            })()}
           </View>
 
           {/* Pricing */}
@@ -266,6 +349,21 @@ export default function TechProfile() {
               ) : null}
             </View>
           ) : null}
+
+          <View style={styles.section}>
+            <Text style={styles.label}>Reviews</Text>
+            {techReviews.length > 0 ? techReviews.map((r) => (
+              <View key={r.id} style={styles.reviewCard}>
+                <View style={styles.reviewHeader}>
+                  <Text style={styles.reviewAuthor}>{r.clientName}</Text>
+                  <Stars rating={r.rating} size={13} />
+                </View>
+                {r.comment ? <Text style={styles.reviewComment}>{r.comment}</Text> : null}
+              </View>
+            )) : (
+              <Text style={styles.reviewComment}>No reviews yet.</Text>
+            )}
+          </View>
 
           <View style={styles.buttonRow}>
             <TouchableOpacity
@@ -462,5 +560,50 @@ const styles = StyleSheet.create({
     textTransform: "uppercase",
     letterSpacing: 0.5,
     marginBottom: 4,
+  },
+  ratingRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Polish.spacing.sm,
+    marginTop: Polish.spacing.sm,
+  },
+  ratingText: {
+    ...Polish.typography.caption,
+    color: Polish.colors.textSecondary,
+    fontWeight: "600",
+  },
+  reviewCard: {
+    paddingVertical: Polish.spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: Polish.colors.borderLight,
+  },
+  reviewHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 4,
+  },
+  reviewAuthor: {
+    ...Polish.typography.caption,
+    color: Polish.colors.text,
+    fontWeight: "600",
+  },
+  reviewComment: {
+    ...Polish.typography.caption,
+    color: Polish.colors.textSecondary,
+    lineHeight: 18,
+  },
+  portfolioSection: {
+    paddingHorizontal: Polish.spacing.xl,
+    marginBottom: Polish.spacing.lg,
+  },
+  portfolioScroll: {
+    marginTop: Polish.spacing.sm,
+  },
+  portfolioPhoto: {
+    height: 200,
+    borderRadius: Polish.radius.md,
+    marginRight: Polish.spacing.sm,
+    backgroundColor: Polish.colors.surface,
   },
 });

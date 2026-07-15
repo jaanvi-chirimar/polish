@@ -1,107 +1,105 @@
 import { Polish } from '@/constants/theme';
 import { useAuth, UserType } from '@/contexts/AuthContext';
-import { auth, db, firebaseConfig } from '@/firebase/config';
-import { formatPhoneNumber, sendPhoneVerificationCode } from '@/lib/phoneAuth';
-import { FirebaseRecaptchaVerifierModal } from 'expo-firebase-recaptcha';
+import { auth, db } from '@/firebase/config';
+import { Ionicons } from '@expo/vector-icons';
+import * as Google from 'expo-auth-session/providers/google';
 import { router } from 'expo-router';
-import { ConfirmationResult } from 'firebase/auth';
+import * as WebBrowser from 'expo-web-browser';
+import { GoogleAuthProvider, signInWithCredential, signOut } from 'firebase/auth';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
-    ActivityIndicator,
-    Alert,
-    KeyboardAvoidingView,
-    Platform,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  Alert,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from 'react-native';
-type AuthStep = 'phone' | 'otp' | 'roleSelection';
+
+WebBrowser.maybeCompleteAuthSession();
+
+type AuthStep = 'signIn' | 'roleSelection';
 
 export default function AuthScreen() {
   const { user, setUserProfile } = useAuth();
-  const [step, setStep] = useState<AuthStep>('phone');
-  const [phoneNumber, setPhoneNumber] = useState('');
-  const [confirmationResult, setConfirmationResult] = useState<ConfirmationResult | null>(null);
-  const [otp, setOtp] = useState('');
+  const [step, setStep] = useState<AuthStep>('signIn');
   const [loading, setLoading] = useState(false);
   const [selectedRoles, setSelectedRoles] = useState<UserType[]>([]);
-  const [isSignUp, setIsSignUp] = useState(true);
+  const [pendingTokens, setPendingTokens] = useState<{
+    accessToken: string;
+    refreshToken: string;
+    expiresIn: number;
+  } | null>(null);
 
-  // reCAPTCHA verifier for iOS/Android
-  const recaptchaVerifier = useRef<FirebaseRecaptchaVerifierModal | null>(null);
+  const [googleRequest, googleResponse, googlePromptAsync] = Google.useAuthRequest({
+    iosClientId: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID,
+    scopes: [
+      'profile',
+      'email',
+      'openid',
+      'https://www.googleapis.com/auth/calendar.events',
+    ],
+  });
 
-  // If user is already logged in, redirect
-  React.useEffect(() => {
-    if (user) {
-      router.replace('/(tabs)');
-    }
+  useEffect(() => {
+    if (user) router.replace('/(tabs)');
   }, [user]);
 
-  const handlePhoneSubmit = async () => {
-    if (!phoneNumber || phoneNumber.replace(/\D/g, '').length < 10) {
-      Alert.alert('Invalid Phone Number', 'Please enter a valid phone number');
-      return;
-    }
+  useEffect(() => {
+    if (googleResponse?.type !== 'success') return;
+    const { authentication } = googleResponse as any;
+    if (!authentication?.accessToken) return;
+    handleGoogleSuccess(authentication);
+  }, [googleResponse]);
 
+  const handleGoogleSuccess = async (authentication: any) => {
     setLoading(true);
     try {
-      const verifier = Platform.OS !== 'web' ? recaptchaVerifier.current : undefined;
-      const confirmation = await sendPhoneVerificationCode(phoneNumber, undefined, verifier as any);
-      setConfirmationResult(confirmation);
-      setStep('otp');
-    } catch (error: any) {
-      console.error('Phone auth error:', error);
-      const errorMessage = error.message || 'Failed to send verification code.';
+      const credential = GoogleAuthProvider.credential(
+        authentication.idToken,
+        authentication.accessToken
+      );
+      const result = await signInWithCredential(auth, credential);
+      const firebaseUser = result.user;
 
-      if (Platform.OS !== 'web') {
+      const DEMO_EMAILS = ['polish.app12@gmail.com'];
+      if (!firebaseUser.email?.endsWith('@cornell.edu') && !DEMO_EMAILS.includes(firebaseUser.email ?? '')) {
+        await signOut(auth);
         Alert.alert(
-          'Phone Auth Error',
-          `${errorMessage}\n\n` +
-          '• Phone auth must be enabled in Firebase Console.\n' +
-          '• For real numbers: upgrade project to Blaze (Billing) so Firebase can send SMS.\n' +
-          '• For testing: add this number as a test phone in Authentication → Phone (exact format e.g. +1 650 555 1234).'
+          'Cornell email required',
+          'Please sign in with your @cornell.edu Google account.'
         );
-      } else {
-        Alert.alert('Error', errorMessage);
+        return;
       }
-    } finally {
-      setLoading(false);
-    }
-  };
 
-  const handleOTPSubmit = async () => {
-    if (!otp || otp.length !== 6) {
-      Alert.alert('Invalid Code', 'Please enter the 6-digit verification code');
-      return;
-    }
+      const tokens = {
+        accessToken: authentication.accessToken,
+        refreshToken: authentication.refreshToken ?? '',
+        expiresIn: authentication.expiresIn ?? 3600,
+      };
 
-    if (!confirmationResult) {
-      Alert.alert('Error', 'Verification session expired. Please try again.');
-      setStep('phone');
-      return;
-    }
-
-    setLoading(true);
-    try {
-      const result = await confirmationResult.confirm(otp);
-
-      const userDocRef = doc(db, 'users', result.user.uid);
+      const userDocRef = doc(db, 'users', firebaseUser.uid);
       const userDoc = await getDoc(userDocRef);
 
-      if (!userDoc.exists()) {
-        setStep('roleSelection');
-      } else {
+      if (userDoc.exists()) {
+        // Existing user — refresh GCal tokens and go to tabs
+        await setDoc(userDocRef, {
+          googleCalendar: {
+            accessToken: tokens.accessToken,
+            refreshToken: tokens.refreshToken,
+            expiresAt: Date.now() + tokens.expiresIn * 1000,
+          },
+        }, { merge: true });
         router.replace('/(tabs)');
+      } else {
+        // New user — show role selection
+        setPendingTokens(tokens);
+        setStep('roleSelection');
       }
     } catch (error: any) {
-      console.error('OTP verification error:', error);
-      Alert.alert(
-        'Error',
-        error.message || 'Invalid verification code. Please try again.'
-      );
+      console.error('Google auth error:', error);
+      Alert.alert('Sign in failed', error.message || 'Please try again.');
     } finally {
       setLoading(false);
     }
@@ -118,17 +116,26 @@ export default function AuthScreen() {
       const currentUser = auth.currentUser;
       if (!currentUser) throw new Error('User not found');
 
-      await setDoc(doc(db, 'users', currentUser.uid), {
-        phoneNumber: currentUser.phoneNumber ?? null,
-        email: currentUser.email ?? null,
+      const profileData: Record<string, any> = {
+        email: currentUser.email,
         roles: selectedRoles,
         profileCompleted: false,
         createdAt: new Date(),
-      }, { merge: true });
+      };
+
+      if (pendingTokens) {
+        profileData.googleCalendar = {
+          accessToken: pendingTokens.accessToken,
+          refreshToken: pendingTokens.refreshToken,
+          expiresAt: Date.now() + pendingTokens.expiresIn * 1000,
+        };
+      }
+
+      await setDoc(doc(db, 'users', currentUser.uid), profileData, { merge: true });
 
       setUserProfile({
         uid: currentUser.uid,
-        phoneNumber: currentUser.phoneNumber,
+        phoneNumber: null,
         email: currentUser.email,
         roles: selectedRoles,
         profileCompleted: false,
@@ -153,153 +160,55 @@ export default function AuthScreen() {
   };
 
   return (
-    <KeyboardAvoidingView
-      style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-    >
-      {/* reCAPTCHA verifier modal for iOS/Android */}
-      {(Platform.OS === 'ios' || Platform.OS === 'android') && (
-        <FirebaseRecaptchaVerifierModal
-          ref={recaptchaVerifier}
-          firebaseConfig={firebaseConfig}
-          attemptInvisibleVerification={true}
-        />
-      )}
-
-      {/* reCAPTCHA container for web - hidden but required for Firebase */}
-      {Platform.OS === 'web' && (
-        <View
-          // @ts-ignore - web only property
-          id="recaptcha-container"
-          style={{ position: 'absolute', opacity: 0, pointerEvents: 'none', width: 0, height: 0 }}
-        />
-      )}
+    <View style={styles.container}>
       <View style={styles.content}>
-        <Text style={styles.title}>
-          {step === 'phone' && (isSignUp ? 'Welcome!' : 'Welcome Back!')}
-          {step === 'otp' && 'Verify Your Phone'}
-          {step === 'roleSelection' && 'Choose Your Role(s)'}
-        </Text>
-
-        {step === 'phone' && (
+        {step === 'signIn' ? (
           <>
+            <Text style={styles.appName}>Polish</Text>
+            <Text style={styles.title}>Welcome</Text>
             <Text style={styles.subtitle}>
-              {isSignUp
-                ? 'Sign up with your phone number to get started'
-                : 'Sign in with your phone number'}
+              Sign in with your Cornell Google account to book or offer nail appointments.
             </Text>
-            <TextInput
-              style={styles.input}
-              placeholder="+1 (555) 123-4567"
-              value={phoneNumber}
-              onChangeText={(text) => setPhoneNumber(formatPhoneNumber(text))}
-              keyboardType="phone-pad"
-              autoFocus
-            />
             <TouchableOpacity
-              style={[styles.button, loading && styles.buttonDisabled]}
-              onPress={handlePhoneSubmit}
-              disabled={loading}
+              style={[styles.googleButton, (!googleRequest || loading) && styles.buttonDisabled]}
+              onPress={() => googlePromptAsync()}
+              disabled={!googleRequest || loading}
+              activeOpacity={0.85}
             >
               {loading ? (
-                <ActivityIndicator color="#fff" size="small" />
+                <ActivityIndicator color={Polish.colors.primary} size="small" />
               ) : (
-                <Text style={styles.buttonText}>Continue with Phone</Text>
+                <>
+                  <Ionicons name="logo-google" size={20} color={Polish.colors.primary} />
+                  <Text style={styles.googleButtonText}>Sign in with Cornell Google</Text>
+                </>
               )}
             </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.switchButton}
-              onPress={() => setIsSignUp(!isSignUp)}
-            >
-              <Text style={styles.switchText}>
-                {isSignUp
-                  ? 'Already have an account? Sign in'
-                  : "Don't have an account? Sign up"}
-              </Text>
-            </TouchableOpacity>
+            <Text style={styles.note}>@cornell.edu accounts only</Text>
           </>
-        )}
-
-        {step === 'otp' && (
+        ) : (
           <>
-            <Text style={styles.subtitle}>
-              Enter the 6-digit code sent to {phoneNumber}
-            </Text>
-            <TextInput
-              style={styles.input}
-              placeholder="000000"
-              value={otp}
-              onChangeText={setOtp}
-              keyboardType="number-pad"
-              maxLength={6}
-              autoFocus
-            />
-            <TouchableOpacity
-              style={[styles.button, loading && styles.buttonDisabled]}
-              onPress={handleOTPSubmit}
-              disabled={loading}
-            >
-              {loading ? (
-                <ActivityIndicator color="#fff" />
-              ) : (
-                <Text style={styles.buttonText}>Verify</Text>
-              )}
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.switchButton}
-              onPress={() => {
-                setStep('phone');
-                setOtp('');
-              }}
-            >
-              <Text style={styles.switchText}>Change phone number</Text>
-            </TouchableOpacity>
-          </>
-        )}
-
-        {step === 'roleSelection' && (
-          <>
+            <Text style={styles.title}>Choose Your Role(s)</Text>
             <Text style={styles.subtitle}>
               You can select one or both roles. You can change this later in settings.
             </Text>
             <TouchableOpacity
-              style={[
-                styles.roleButton,
-                selectedRoles.includes('user') && styles.roleButtonSelected,
-              ]}
+              style={[styles.roleButton, selectedRoles.includes('user') && styles.roleButtonSelected]}
               onPress={() => toggleRole('user')}
             >
-              <Text
-                style={[
-                  styles.roleButtonText,
-                  selectedRoles.includes('user') && styles.roleButtonTextSelected,
-                ]}
-              >
+              <Text style={[styles.roleButtonText, selectedRoles.includes('user') && styles.roleButtonTextSelected]}>
                 👤 Customer
               </Text>
-              <Text style={styles.roleDescription}>
-                Book appointments with nail techs
-              </Text>
+              <Text style={styles.roleDescription}>Book appointments with nail techs</Text>
             </TouchableOpacity>
             <TouchableOpacity
-              style={[
-                styles.roleButton,
-                selectedRoles.includes('nailTech') && styles.roleButtonSelected,
-              ]}
+              style={[styles.roleButton, selectedRoles.includes('nailTech') && styles.roleButtonSelected]}
               onPress={() => toggleRole('nailTech')}
             >
-              <Text
-                style={[
-                  styles.roleButtonText,
-                  selectedRoles.includes('nailTech') && styles.roleButtonTextSelected,
-                ]}
-              >
+              <Text style={[styles.roleButtonText, selectedRoles.includes('nailTech') && styles.roleButtonTextSelected]}>
                 💅 Nail Tech
               </Text>
-              <Text style={styles.roleDescription}>
-                Offer your services and manage bookings
-              </Text>
+              <Text style={styles.roleDescription}>Offer your services and manage bookings</Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={[styles.button, loading && styles.buttonDisabled]}
@@ -309,13 +218,13 @@ export default function AuthScreen() {
               {loading ? (
                 <ActivityIndicator color="#fff" />
               ) : (
-                <Text style={styles.buttonText}>Complete Sign Up</Text>
+                <Text style={styles.buttonText}>Continue</Text>
               )}
             </TouchableOpacity>
           </>
         )}
       </View>
-    </KeyboardAvoidingView>
+    </View>
   );
 }
 
@@ -327,8 +236,16 @@ const styles = StyleSheet.create({
   content: {
     flex: 1,
     padding: Polish.spacing.xl,
-    paddingTop: 80,
+    paddingTop: 100,
     justifyContent: 'flex-start',
+  },
+  appName: {
+    ...Polish.typography.caption,
+    color: Polish.colors.primary,
+    fontWeight: '700',
+    letterSpacing: 2,
+    textTransform: 'uppercase',
+    marginBottom: Polish.spacing.lg,
   },
   title: {
     ...Polish.typography.title,
@@ -341,14 +258,26 @@ const styles = StyleSheet.create({
     marginBottom: Polish.spacing.xxxl,
     lineHeight: 22,
   },
-  input: {
-    borderWidth: 1,
-    borderColor: Polish.colors.border,
+  googleButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Polish.spacing.md,
+    borderWidth: 1.5,
+    borderColor: Polish.colors.primary,
     borderRadius: Polish.radius.md,
     padding: Polish.spacing.lg,
-    ...Polish.typography.body,
-    marginBottom: Polish.spacing.xl,
     backgroundColor: Polish.colors.surface,
+    marginBottom: Polish.spacing.md,
+  },
+  googleButtonText: {
+    ...Polish.typography.button,
+    color: Polish.colors.primary,
+  },
+  note: {
+    ...Polish.typography.caption,
+    color: Polish.colors.textMuted,
+    textAlign: 'center',
   },
   button: {
     backgroundColor: Polish.colors.primary,
@@ -363,14 +292,6 @@ const styles = StyleSheet.create({
   buttonText: {
     ...Polish.typography.button,
     color: '#fff',
-  },
-  switchButton: {
-    marginTop: Polish.spacing.xl,
-    alignItems: 'center',
-  },
-  switchText: {
-    ...Polish.typography.caption,
-    color: Polish.colors.textSecondary,
   },
   roleButton: {
     borderWidth: 2,

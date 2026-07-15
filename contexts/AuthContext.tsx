@@ -15,8 +15,7 @@ export interface PricingTier {
 export interface NailTechProfile {
   portfolio?: string[];
   availabilities?: {
-    days: string[];
-    timeRanges?: { start: string; end: string }[];
+    schedule: Record<string, Array<{ start: string; end: string }>>; // day name -> array of time blocks, e.g. { "Monday": [{ start: "14:00", end: "20:00" }] }
   };
   tools?: string[];
   designs?: string[];
@@ -33,6 +32,9 @@ export interface NailTechProfile {
   };
   paymentMethods?: string[];
   maxAppointmentsPerWeek?: number;
+  usePricingTiers?: boolean;
+  pricingDescription?: string;
+  removalAddOn?: { enabled: boolean; price: number };
 }
 
 export interface UserProfile {
@@ -45,6 +47,7 @@ export interface UserProfile {
   profileCompleted: boolean; // Whether they've completed the setup
   preferences?: string | string[]; // User preferences (string for legacy, array for multiselect)
   location?: string; // User location (optional)
+  instagramHandle?: string;
   nailTechProfile?: NailTechProfile; // Only if they have nailTech role
   googleCalendar?: {
     accessToken: string;
@@ -104,12 +107,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             setUserProfile({
               uid: firebaseUser.uid,
               phoneNumber: firebaseUser.phoneNumber,
+              email: firebaseUser.email,
               roles: roles,
               firstName: data.firstName,
               lastName: data.lastName,
               profileCompleted: data.profileCompleted ?? false,
               preferences: Array.isArray(data.preferences) ? data.preferences : data.preferences,
               location: data.location,
+              instagramHandle: data.instagramHandle,
               nailTechProfile: data.nailTechProfile,
               createdAt: data.createdAt?.toDate(),
             });
@@ -152,6 +157,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
       if (profile.location !== undefined && profile.location !== null) {
         profileData.location = profile.location;
+      }
+      if (profile.instagramHandle !== undefined && profile.instagramHandle !== null) {
+        profileData.instagramHandle = profile.instagramHandle;
       }
       if (profile.nailTechProfile !== undefined) {
         profileData.nailTechProfile = profile.nailTechProfile;
