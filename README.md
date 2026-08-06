@@ -1,4 +1,4 @@
-# Polish
+# Polished.
 
 A dual-role nail service marketplace app connecting customers with nail technicians. Built with React Native, Expo, and Firebase.
 
