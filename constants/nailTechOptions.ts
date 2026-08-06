@@ -41,7 +41,6 @@ export const CUSTOMER_PREFERENCES_OPTIONS = [
   'French',
   'Simple polish',
   'Luxury / spa',
-  'Nail art / designs',
   'Extensions',
   'Chrome / metallic',
   'Minimalist',

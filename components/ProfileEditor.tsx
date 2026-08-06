@@ -816,19 +816,47 @@ export default function ProfileEditor({ showBackButton = false, topPadding = 60 
                             <Text style={styles.scheduleUnavailableText}>Unavailable</Text>
                           )}
                         </View>
-                        <TouchableOpacity
-                          style={styles.scheduleAddBtn}
-                          onPress={() => {
-                            setAvailSchedule(prev => ({
-                              ...prev,
-                              [day]: [...(prev[day] ?? []), { start: '10:00', end: '18:00' }],
-                            }));
-                            setTimePicker(null);
-                          }}
-                          activeOpacity={0.8}
-                        >
-                          <Ionicons name="add" size={20} color={Polish.colors.primary} />
-                        </TouchableOpacity>
+                        <View style={styles.scheduleDayActions}>
+                          <TouchableOpacity
+                            style={styles.scheduleAddBtn}
+                            onPress={() => {
+                              setAvailSchedule(prev => ({
+                                ...prev,
+                                [day]: [...(prev[day] ?? []), { start: '10:00', end: '18:00' }],
+                              }));
+                              setTimePicker(null);
+                            }}
+                            activeOpacity={0.8}
+                          >
+                            <Ionicons name="add" size={20} color={Polish.colors.primary} />
+                          </TouchableOpacity>
+                          {hasBlocks && (
+                            <TouchableOpacity
+                              style={styles.scheduleCopyBtn}
+                              onPress={() => {
+                                Alert.alert(
+                                  'Copy to all days',
+                                  `Apply ${day}'s hours to every day this week?`,
+                                  [
+                                    { text: 'Cancel', style: 'cancel' },
+                                    {
+                                      text: 'Copy',
+                                      onPress: () => {
+                                        const next: typeof availSchedule = {};
+                                        DAYS_OF_WEEK.forEach(d => { next[d] = blocks.map(b => ({ ...b })); });
+                                        setAvailSchedule(next);
+                                        setTimePicker(null);
+                                      },
+                                    },
+                                  ]
+                                );
+                              }}
+                              activeOpacity={0.8}
+                            >
+                              <Ionicons name="copy-outline" size={17} color={Polish.colors.textMuted} />
+                            </TouchableOpacity>
+                          )}
+                        </View>
                       </View>
                     );
                   })}
@@ -1552,9 +1580,16 @@ const styles = StyleSheet.create({
     color: Polish.colors.textMuted,
     paddingVertical: 6,
   },
+  scheduleDayActions: {
+    alignItems: 'center',
+    gap: 2,
+  },
   scheduleAddBtn: {
     padding: 4,
     marginTop: 2,
+  },
+  scheduleCopyBtn: {
+    padding: 4,
   },
   buttonRow: {
     flexDirection: 'row',
