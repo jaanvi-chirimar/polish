@@ -4,7 +4,7 @@ A dual-role nail service marketplace app connecting customers with nail technici
 
 ## Features
 
-- **Phone authentication** — Sign up and log in with your phone number (SMS OTP)
+- **Cornell-Gated authentication** — Sign up and log in with your cornell email
 - **Dual roles** — Users can be a Customer, Nail Tech, or both
 - **Tech discovery** — Browse nail techs by location, tools, and designs
 - **Booking** — Schedule appointments with date/time picker and availability validation
